@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data & outputs
+DATA/*
+!DATA/.gitkeep
+OUTPUTS/*
+!OUTPUTS/.gitkeep
+
+# Secrets
+.env
+
+# Streamlit
+.streamlit/
+
