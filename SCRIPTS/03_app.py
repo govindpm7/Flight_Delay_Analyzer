@@ -5,11 +5,10 @@ import os
 from datetime import date
 from typing import Optional
 
-import joblib
+import pickle
 import numpy as np
 import pandas as pd
 import streamlit as st
-from dotenv import load_dotenv
 
 try:
     from serpapi import GoogleSearch  # optional, only used if key is provided
@@ -20,7 +19,7 @@ from utils import parse_flight_number, ConfidenceBand, confidence_badge_level
 
 
 ARTIFACT_DIR = "OUTPUTS"
-MODEL_PATH = os.path.join(ARTIFACT_DIR, "model.joblib")
+MODEL_PATH = os.path.join(ARTIFACT_DIR, "model.pkl")
 META_PATH = os.path.join(ARTIFACT_DIR, "metadata.json")
 LOOKUP_PATH = os.path.join(ARTIFACT_DIR, "flight_lookup.csv")
 BTS_AIRPORT_PATH = os.path.join(ARTIFACT_DIR, "bts_lookup_airport.csv")
@@ -32,7 +31,8 @@ def load_model():
     if not os.path.exists(MODEL_PATH):
         return None
     try:
-        return joblib.load(MODEL_PATH)
+        with open(MODEL_PATH, "rb") as f:
+            return pickle.load(f)
     except Exception:
         return None
 
@@ -103,8 +103,27 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
                 
                 # Look for airport codes in the content
                 import re
-                airport_pattern = r'\b[A-Z]{3}\b'
-                airports = re.findall(airport_pattern, title + " " + snippet)
+                # Look for both IATA (3 letters) and ICAO (4 letters starting with K) codes
+                iata_pattern = r'\b[A-Z]{3}\b'
+                icao_pattern = r'\bK[A-Z]{3}\b'
+                
+                # Find IATA codes first (preferred)
+                iata_airports = re.findall(iata_pattern, title + " " + snippet)
+                # Find ICAO codes and convert to IATA
+                icao_airports = re.findall(icao_pattern, title + " " + snippet)
+                
+                airports = []
+                
+                # Add IATA codes
+                for code in iata_airports:
+                    if code not in ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'BUT', 'NOT', 'WHAT', 'ALL', 'WERE', 'WHEN', 'YOUR', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'HER', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'TWO', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART']:
+                        airports.append(code)
+                
+                # Convert ICAO to IATA (remove 'K' prefix)
+                for code in icao_airports:
+                    iata_code = code[1:]  # Remove 'K'
+                    if iata_code not in airports:
+                        airports.append(iata_code)
                 
                 if len(airports) >= 2:
                     return {
@@ -238,8 +257,6 @@ def display_delay_cause_insights(bts_airport: pd.DataFrame, bts_carrier: pd.Data
 
 
 def main():
-    # Load environment (.env) once on app start for local dev; Streamlit Cloud can use secrets/env
-    load_dotenv(override=False)
     st.set_page_config(page_title="Flight Delay Prediction (MVP)", page_icon="✈️", layout="centered")
     st.title("Flight Delay Prediction (MVP)")
     st.caption("Historical-patterns baseline with SERP API route search.")
@@ -412,8 +429,18 @@ def main():
                 if feature not in bts_features:
                     bts_features[feature] = 0.0
 
-            # Calculate distance (simplified - in real app would use airport coordinates)
-            distance = 500.0  # Default distance, would be calculated from airport coordinates
+            # Get actual distance from lookup data
+            distance = 500.0  # Default fallback
+            if lookup is not None:
+                # Try to get distance from route data
+                route_data = lookup[lookup["route"] == route]
+                if not route_data.empty and "DISTANCE" in route_data.columns:
+                    distance = route_data["DISTANCE"].iloc[0]
+                else:
+                    # Try to get distance from origin-destination pair
+                    origin_dest_data = lookup[(lookup["ORIGIN"] == origin.upper()) & (lookup["DEST"] == dest.upper())]
+                    if not origin_dest_data.empty and "DISTANCE" in origin_dest_data.columns:
+                        distance = origin_dest_data["DISTANCE"].iloc[0]
 
             # Create feature dictionary with all features
             feature_dict = {

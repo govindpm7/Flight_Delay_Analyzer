@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pickle
 from typing import List, Tuple
 
-import joblib
 import numpy as np
 import pandas as pd
 from dateutil import parser as date_parser
@@ -235,10 +235,12 @@ def main():
         if m["mae"] < best_mae:
             best_name, best_model, best_mae = name, model, m["mae"]
 
-    # Persist artifacts
-    joblib.dump(best_model, os.path.join(args.out_dir, "model.joblib"))
-    # Preprocessor is embedded in pipeline; still export a standalone fitted preprocessor for analysis
-    joblib.dump(best_model.named_steps["pre"], os.path.join(args.out_dir, "preprocessor.joblib"))
+    # Persist artifacts (use pickle instead of joblib)
+    with open(os.path.join(args.out_dir, "model.pkl"), "wb") as f:
+        pickle.dump(best_model, f)
+    # Preprocessor is embedded in pipeline; also export standalone for analysis
+    with open(os.path.join(args.out_dir, "preprocessor.pkl"), "wb") as f:
+        pickle.dump(best_model.named_steps["pre"], f)
 
     # PCA analysis report (for documentation)
     run_pca_report(best_model.named_steps["pre"], X_train, os.path.join(args.out_dir, "pca_report.json"))
