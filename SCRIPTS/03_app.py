@@ -235,25 +235,13 @@ def display_delay_cause_insights(bts_airport: pd.DataFrame, bts_carrier: pd.Data
             'Late Aircraft': bts_airport['late_aircraft_delay_rate_origin'].mean()
         }
         
-        # Create a simple bar chart
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(10, 6))
-        causes = list(avg_causes.keys())
-        rates = list(avg_causes.values())
+        # Create a simple bar chart using Streamlit's built-in charting
+        chart_data = pd.DataFrame({
+            'Delay Cause': list(avg_causes.keys()),
+            'Average Rate': list(avg_causes.values())
+        })
         
-        bars = ax.bar(causes, rates, color=['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'])
-        ax.set_ylabel('Average Delay Rate')
-        ax.set_title('Average Delay Causes Across All Airports')
-        ax.tick_params(axis='x', rotation=45)
-        
-        # Add value labels on bars
-        for bar, rate in zip(bars, rates):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 0.001,
-                   f'{rate:.1%}', ha='center', va='bottom')
-        
-        plt.tight_layout()
-        st.pyplot(fig)
+        st.bar_chart(chart_data.set_index('Delay Cause'))
 
 
 def main():

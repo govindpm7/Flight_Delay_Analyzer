@@ -1,19 +1,75 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
-.venv/
-venv/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Data & outputs (now tracked in git)
-# DATA/*
-# !DATA/.gitkeep
-# OUTPUTS/*
-# !OUTPUTS/.gitkeep
-
-# Secrets
+# Virtual environments
 .env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
 
 # Streamlit
 .streamlit/
 
+# Model artifacts and outputs
+OUTPUTS/
+*.pkl
+*.joblib
+
+# Data files (keep structure but ignore large files)
+DATA/*.csv
+DATA/*.zip
+DATA/*.xlsx
+!DATA/ot_delaycause1_DL/
+!DATA/ot_delaycause1_DL/Airline_Delay_Cause.csv
+!DATA/ot_delaycause1_DL/Download_Column_Definitions.xlsx
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Batch files
+*.bat
+*.cmd
+
+# Temporary files
+*.tmp
+*.temp
