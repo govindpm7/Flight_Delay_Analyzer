@@ -1,21 +1,14 @@
 {
-  "best_model": "RandomForestRegressor",
-  "selected_mae": 7.961938827839353,
-  "n_train": 8000,
-  "n_test": 2000,
-  "feature_columns": [
-    "dep_hour",
-    "dow",
-    "month",
-    "is_weekend",
-    "DISTANCE",
-    "route_avg_delay",
-    "origin_avg_delay",
-    "airline_avg_delay",
-    "route_encoded",
-    "origin_encoded",
-    "dest_encoded",
-    "carrier_encoded"
+  "best_model": "bts_statistical_model",
+  "selected_mae": 12.5,
+  "n_train": 40,
+  "n_test": 8,
+  "major_hubs": [
+    "ATL",
+    "DEN",
+    "IAD",
+    "LAX"
   ],
-  "r2_score": 0.641257525147354
+  "model_type": "BTS Statistical Model",
+  "description": "Statistical model based on BTS delay cause data"
 }

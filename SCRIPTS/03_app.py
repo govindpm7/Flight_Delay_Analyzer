@@ -18,6 +18,32 @@ except Exception:  # keep app running without serpapi installed
 from utils import parse_flight_number, ConfidenceBand, confidence_badge_level
 
 
+def json_to_csv_helper(json_data, filename_prefix="data"):
+    """Helper function to convert JSON data to CSV format"""
+    import json
+    import pandas as pd
+    from datetime import datetime
+    
+    if isinstance(json_data, dict):
+        # Convert single dict to DataFrame
+        df = pd.DataFrame([json_data])
+    elif isinstance(json_data, list):
+        # Convert list of dicts to DataFrame
+        df = pd.DataFrame(json_data)
+    else:
+        st.error("JSON data must be a dictionary or list of dictionaries")
+        return None
+    
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{filename_prefix}_{timestamp}.csv"
+    
+    # Convert to CSV
+    csv_data = df.to_csv(index=False)
+    
+    return csv_data, filename
+
+
 ARTIFACT_DIR = "OUTPUTS"
 MODEL_PATH = os.path.join(ARTIFACT_DIR, "model.pkl")
 META_PATH = os.path.join(ARTIFACT_DIR, "metadata.json")
@@ -626,14 +652,30 @@ def main():
                 use_container_width=True
             )
             
-            # Download button
-            csv = history_df.to_csv(index=False)
-            st.download_button(
-                label="Download Search History as CSV",
-                data=csv,
-                file_name=f"flight_search_history_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+            # Download buttons
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # CSV download
+                csv = history_df.to_csv(index=False)
+                st.download_button(
+                    label="Download as CSV",
+                    data=csv,
+                    file_name=f"flight_search_history_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                # JSON download using helper function
+                json_data = history_df.to_dict('records')
+                json_str, json_filename = json_to_csv_helper(json_data, "flight_search_history")
+                if json_str:
+                    st.download_button(
+                        label="Download as JSON",
+                        data=json_str,
+                        file_name=json_filename.replace('.csv', '.json'),
+                        mime="application/json"
+                    )
             
             # Clear history button
             if st.button("Clear History", type="secondary"):
