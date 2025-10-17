@@ -5,11 +5,11 @@ __pycache__/
 .venv/
 venv/
 
-# Data & outputs
-DATA/*
-!DATA/.gitkeep
-OUTPUTS/*
-!OUTPUTS/.gitkeep
+# Data & outputs (now tracked in git)
+# DATA/*
+# !DATA/.gitkeep
+# OUTPUTS/*
+# !OUTPUTS/.gitkeep
 
 # Secrets
 .env
