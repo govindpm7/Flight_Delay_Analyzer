@@ -95,37 +95,106 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
         search = GoogleSearch(params)
         results = search.get_dict()
         
+        # Debug: Show the raw JSON response
+        st.write("🔍 SERP API Response:")
+        st.json(results)
+        
         # Extract route information from search results
         if "organic_results" in results:
-            for result in results["organic_results"][:3]:  # Check first 3 results
-                title = result.get("title", "").lower()
-                snippet = result.get("snippet", "").lower()
+            import re
+            
+            # Common airport patterns and route indicators
+            route_patterns = [
+                r'(\w{3})\s*to\s*(\w{3})',  # "PHX to LAX"
+                r'(\w{3})\s*-\s*(\w{3})',   # "PHX-LAX"
+                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
+                r'from\s+(\w{3})\s+to\s+(\w{3})',  # "from PHX to LAX"
+                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
+            ]
+            
+            # Airport name patterns (common airports)
+            airport_names = {
+                'phoenix': 'PHX', 'sky harbor': 'PHX',
+                'los angeles': 'LAX', 'lax': 'LAX',
+                'atlanta': 'ATL', 'hartsfield': 'ATL',
+                'denver': 'DEN', 'den': 'DEN',
+                'chicago': 'ORD', 'o\'hare': 'ORD',
+                'dallas': 'DFW', 'fort worth': 'DFW',
+                'houston': 'IAH', 'bush': 'IAH',
+                'miami': 'MIA', 'mia': 'MIA',
+                'las vegas': 'LAS', 'las': 'LAS',
+                'seattle': 'SEA', 'sea': 'SEA',
+                'boston': 'BOS', 'bos': 'BOS',
+                'new york': 'JFK', 'jfk': 'JFK',
+                'washington': 'IAD', 'dulles': 'IAD',
+                'san francisco': 'SFO', 'sfo': 'SFO',
+                'orlando': 'MCO', 'mco': 'MCO',
+                'charlotte': 'CLT', 'clt': 'CLT',
+                'philadelphia': 'PHL', 'phl': 'PHL',
+                'detroit': 'DTW', 'dtw': 'DTW',
+                'minneapolis': 'MSP', 'msp': 'MSP',
+                'salt lake': 'SLC', 'slc': 'SLC',
+                'baltimore': 'BWI', 'bwi': 'BWI',
+                'nashville': 'BNA', 'bna': 'BNA',
+                'austin': 'AUS', 'aus': 'AUS'
+            }
+            
+            for i, result in enumerate(results["organic_results"][:5]):  # Check first 5 results
+                title = result.get("title", "")
+                snippet = result.get("snippet", "")
+                content = (title + " " + snippet).lower()
                 
-                # Look for airport codes in the content
-                import re
-                # Look for both IATA (3 letters) and ICAO (4 letters starting with K) codes
-                iata_pattern = r'\b[A-Z]{3}\b'
-                icao_pattern = r'\bK[A-Z]{3}\b'
+                st.write(f"**Result {i+1}:** {title}")
+                st.write(f"**Snippet:** {snippet}")
                 
-                # Find IATA codes first (preferred)
-                iata_airports = re.findall(iata_pattern, title + " " + snippet)
-                # Find ICAO codes and convert to IATA
-                icao_airports = re.findall(icao_pattern, title + " " + snippet)
+                # Try direct airport code patterns first
+                for pattern in route_patterns:
+                    match = re.search(pattern, content, re.IGNORECASE)
+                    if match:
+                        origin, dest = match.groups()
+                        if len(origin) == 3 and len(dest) == 3:
+                            st.success(f"Found route pattern: {origin} → {dest}")
+                            return {
+                                "origin": origin.upper(),
+                                "destination": dest.upper(),
+                                "title": result.get("title", ""),
+                                "snippet": result.get("snippet", ""),
+                                "link": result.get("link", "")
+                            }
                 
-                airports = []
+                # Try airport name patterns
+                for name, code in airport_names.items():
+                    if name in content:
+                        # Look for another airport in the same text
+                        for other_name, other_code in airport_names.items():
+                            if other_name != name and other_name in content:
+                                # Try to determine which is origin/destination
+                                name_pos = content.find(name)
+                                other_pos = content.find(other_name)
+                                if name_pos < other_pos:
+                                    st.success(f"Found airport names: {code} → {other_code}")
+                                    return {
+                                        "origin": code,
+                                        "destination": other_code,
+                                        "title": result.get("title", ""),
+                                        "snippet": result.get("snippet", ""),
+                                        "link": result.get("link", "")
+                                    }
+                                else:
+                                    st.success(f"Found airport names: {other_code} → {code}")
+                                    return {
+                                        "origin": other_code,
+                                        "destination": code,
+                                        "title": result.get("title", ""),
+                                        "snippet": result.get("snippet", ""),
+                                        "link": result.get("link", "")
+                                    }
                 
-                # Add IATA codes
-                for code in iata_airports:
-                    if code not in ['THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN', 'HER', 'WAS', 'ONE', 'OUR', 'HAD', 'BUT', 'NOT', 'WHAT', 'ALL', 'WERE', 'WHEN', 'YOUR', 'SAID', 'EACH', 'WHICH', 'THEIR', 'TIME', 'WILL', 'ABOUT', 'IF', 'UP', 'OUT', 'MANY', 'THEN', 'THEM', 'THESE', 'SO', 'SOME', 'HER', 'WOULD', 'MAKE', 'LIKE', 'INTO', 'HIM', 'HAS', 'TWO', 'MORE', 'GO', 'NO', 'WAY', 'COULD', 'MY', 'THAN', 'FIRST', 'BEEN', 'CALL', 'WHO', 'ITS', 'NOW', 'FIND', 'LONG', 'DOWN', 'DAY', 'DID', 'GET', 'COME', 'MADE', 'MAY', 'PART']:
-                        airports.append(code)
-                
-                # Convert ICAO to IATA (remove 'K' prefix)
-                for code in icao_airports:
-                    iata_code = code[1:]  # Remove 'K'
-                    if iata_code not in airports:
-                        airports.append(iata_code)
-                
+                # Fallback: look for any 3-letter codes
+                airport_pattern = r'\b[A-Z]{3}\b'
+                airports = re.findall(airport_pattern, title + " " + snippet)
                 if len(airports) >= 2:
+                    st.success(f"Found airport codes: {airports[0]} → {airports[1]}")
                     return {
                         "origin": airports[0],
                         "destination": airports[1],
