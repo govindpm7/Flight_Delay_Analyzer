@@ -44,15 +44,40 @@ def build_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
     data = data.merge(origin_avg, on="ORIGIN", how="left")
     data = data.merge(airline_avg, on="OP_CARRIER", how="left")
 
+    # BTS delay cause features (if available)
+    bts_features = []
+    bts_feature_names = [
+        'total_delay_rate_origin', 'carrier_delay_rate_origin', 'weather_delay_rate_origin',
+        'nas_delay_rate_origin', 'security_delay_rate_origin', 'late_aircraft_delay_rate_origin',
+        'avg_delay_minutes_origin', 'avg_carrier_delay_origin', 'avg_weather_delay_origin',
+        'avg_nas_delay_origin', 'avg_security_delay_origin', 'avg_late_aircraft_delay_origin',
+        'total_delay_rate_dest', 'carrier_delay_rate_dest', 'weather_delay_rate_dest',
+        'nas_delay_rate_dest', 'security_delay_rate_dest', 'late_aircraft_delay_rate_dest',
+        'avg_delay_minutes_dest', 'avg_carrier_delay_dest', 'avg_weather_delay_dest',
+        'avg_nas_delay_dest', 'avg_security_delay_dest', 'avg_late_aircraft_delay_dest'
+    ]
+    
+    for feature in bts_feature_names:
+        if feature in data.columns:
+            bts_features.append(feature)
+            # Fill missing values with 0 for BTS features
+            data[feature] = data[feature].fillna(0)
+        else:
+            # Add missing BTS features as zeros
+            data[feature] = 0.0
+            bts_features.append(feature)
+
     # Target
     y = data["DEP_DELAY"].astype(float)
 
-    # Feature matrix
-    X = data[[
+    # Feature matrix - include BTS features
+    feature_columns = [
         "dep_hour", "dow", "month", "is_weekend", "DISTANCE",
         "route", "ORIGIN", "DEST", "OP_CARRIER",
         "route_avg_delay", "origin_avg_delay", "airline_avg_delay",
-    ]].copy()
+    ] + bts_features
+
+    X = data[feature_columns].copy()
 
     return X, y
 
@@ -66,8 +91,11 @@ def temporal_split(X: pd.DataFrame, y: pd.Series, dates: pd.Series, test_size: f
 
 
 def train_models(X: pd.DataFrame, y: pd.Series) -> Tuple[Pipeline, dict]:
+    # Identify BTS features dynamically
+    bts_features = [col for col in X.columns if any(x in col for x in ['delay_rate', 'avg_delay'])]
+    
     numeric_features = ["dep_hour", "dow", "month", "is_weekend", "DISTANCE",
-                        "route_avg_delay", "origin_avg_delay", "airline_avg_delay"]
+                        "route_avg_delay", "origin_avg_delay", "airline_avg_delay"] + bts_features
     categorical_features = ["route", "ORIGIN", "DEST", "OP_CARRIER"]
 
     preprocessor = ColumnTransformer(
@@ -123,6 +151,50 @@ def build_flight_lookup(df: pd.DataFrame, out_path: str):
     top.to_csv(out_path, index=False)
 
 
+def build_bts_lookup(df: pd.DataFrame, out_path: str):
+    """Build BTS delay cause lookup for airports and carriers"""
+    if not any(col in df.columns for col in ['total_delay_rate_origin', 'carrier_delay_rate_origin']):
+        print("No BTS features found, skipping BTS lookup creation")
+        return
+    
+    # Create airport-level BTS lookup
+    airport_bts = df.groupby(['ORIGIN']).agg({
+        'total_delay_rate_origin': 'mean',
+        'carrier_delay_rate_origin': 'mean',
+        'weather_delay_rate_origin': 'mean',
+        'nas_delay_rate_origin': 'mean',
+        'security_delay_rate_origin': 'mean',
+        'late_aircraft_delay_rate_origin': 'mean',
+        'avg_delay_minutes_origin': 'mean',
+        'avg_carrier_delay_origin': 'mean',
+        'avg_weather_delay_origin': 'mean',
+        'avg_nas_delay_origin': 'mean',
+        'avg_security_delay_origin': 'mean',
+        'avg_late_aircraft_delay_origin': 'mean'
+    }).reset_index()
+    
+    # Create carrier-level BTS lookup
+    carrier_bts = df.groupby(['OP_CARRIER']).agg({
+        'total_delay_rate_origin': 'mean',
+        'carrier_delay_rate_origin': 'mean',
+        'weather_delay_rate_origin': 'mean',
+        'nas_delay_rate_origin': 'mean',
+        'security_delay_rate_origin': 'mean',
+        'late_aircraft_delay_rate_origin': 'mean',
+        'avg_delay_minutes_origin': 'mean',
+        'avg_carrier_delay_origin': 'mean',
+        'avg_weather_delay_origin': 'mean',
+        'avg_nas_delay_origin': 'mean',
+        'avg_security_delay_origin': 'mean',
+        'avg_late_aircraft_delay_origin': 'mean'
+    }).reset_index()
+    
+    # Save both lookups
+    airport_bts.to_csv(out_path.replace('.csv', '_airport.csv'), index=False)
+    carrier_bts.to_csv(out_path.replace('.csv', '_carrier.csv'), index=False)
+    print(f"Created BTS lookups: {out_path.replace('.csv', '_airport.csv')} and {out_path.replace('.csv', '_carrier.csv')}")
+
+
 def run_pca_report(preprocessor: ColumnTransformer, X_train: pd.DataFrame, out_path: str):
     # Fit preprocessor to get dense feature matrix, then PCA for analysis only
     Xt = preprocessor.fit_transform(X_train)
@@ -173,6 +245,9 @@ def main():
 
     # Flight lookup for app routing defaults
     build_flight_lookup(df, os.path.join(args.out_dir, "flight_lookup.csv"))
+    
+    # BTS lookup for delay cause analysis
+    build_bts_lookup(df, os.path.join(args.out_dir, "bts_lookup.csv"))
 
     summary = {
         "best_model": best_name,
