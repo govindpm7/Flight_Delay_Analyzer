@@ -11,11 +11,11 @@ python SCRIPTS\04_bts_processor.py --input "DATA\ot_delaycause1_DL\Airline_Delay
 
 echo.
 echo Step 2: Creating lookup files for the app...
-python SCRIPTS\create_bts_lookups.py
+python SCRIPTS\05_create_bts_lookups.py
 
 echo.
 echo Step 3: Training model from BTS data...
-python SCRIPTS\train_model_from_bts.py
+python SCRIPTS\create_bts_model.py
 
 echo.
 echo Data processing complete!

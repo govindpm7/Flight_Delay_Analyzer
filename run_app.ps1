@@ -46,11 +46,11 @@ if ($processData) {
     
     Write-Host ""
     Write-Host "Step 2: Creating lookup files for the app..." -ForegroundColor Yellow
-    & "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\create_bts_lookups.py
+    & "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\05_create_bts_lookups.py
     
     Write-Host ""
     Write-Host "Step 3: Training model from BTS data..." -ForegroundColor Yellow
-    & "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\train_model_from_bts.py
+    & "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\create_bts_model.py
     
     Write-Host ""
     Write-Host "Data processing complete!" -ForegroundColor Green
@@ -63,7 +63,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Set-Location "$PSScriptRoot\SCRIPTS"
 
 # Run the Streamlit app using the conda environment
-& "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\python.exe" -m streamlit run 03_app.py
+& "C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\streamlit.exe" run 03_app.py
 
 Write-Host ""
 Write-Host "App has been stopped." -ForegroundColor Yellow

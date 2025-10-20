@@ -33,11 +33,11 @@ echo Step 1: Processing BTS delay cause data...
 
 echo.
 echo Step 2: Creating lookup files for the app...
-"C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\create_bts_lookups.py
+"C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\05_create_bts_lookups.py
 
 echo.
 echo Step 3: Training model from BTS data...
-"C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\train_model_from_bts.py
+"C:\Users\Govind Molakalapalli\Documents\GitHub\.conda\Scripts\python.exe" SCRIPTS\create_bts_model.py
 
 echo.
 echo Data processing complete!

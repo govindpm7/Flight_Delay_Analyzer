@@ -70,6 +70,9 @@ Thumbs.db
 *.bat
 *.cmd
 
+# PowerShell files
+*.ps1
+
 # Temporary files
 *.tmp
 *.temp

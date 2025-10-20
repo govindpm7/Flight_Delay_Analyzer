@@ -113,13 +113,182 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
         return None
     
     try:
-        params = {
-            "engine": "google",
-            "q": f"{flight_number} flight route origin destination",
-            "api_key": api_key,
-        }
-        search = GoogleSearch(params)
-        results = search.get_dict()
+        # First try to get route information using general Google search
+        # Then use that route info for Google Flights API
+        try:
+            # Step 1: Use general Google search to find route information
+            route_search_params = {
+                "engine": "google",
+                "q": f"{flight_number} flight route origin destination",
+                "api_key": api_key,
+                "gl": "us",
+                "hl": "en",
+                "num": "10"
+            }
+            
+            route_search = GoogleSearch(route_search_params)
+            route_results = route_search.get_dict()
+            
+            # Extract route information from search results
+            origin_code = None
+            destination_code = None
+            
+            if "organic_results" in route_results:
+                for result in route_results["organic_results"]:
+                    snippet = result.get("snippet", "").upper()
+                    title = result.get("title", "").upper()
+                    combined_text = f"{title} {snippet}"
+                    
+                    # Look for airport codes in the text
+                    import re
+                    airport_pattern = r'\b([A-Z]{3})\s*(?:to|→|-|–)\s*([A-Z]{3})\b'
+                    match = re.search(airport_pattern, combined_text)
+                    if match:
+                        origin_code = match.group(1)
+                        destination_code = match.group(2)
+                        break
+            
+            # Step 2: If we found route info, try Google Flights API
+            if origin_code and destination_code:
+                from datetime import date
+                today = date.today().strftime("%Y-%m-%d")
+                
+                flight_params = {
+                    "engine": "google_flights",
+                    "departure_id": origin_code,
+                    "arrival_id": destination_code,
+                    "api_key": api_key,
+                    "gl": "us",
+                    "hl": "en",
+                    "outbound_date": today,
+                    "currency": "USD",
+                    "adults": "1",
+                    "children": "0",
+                    "infants_in_seat": "0",
+                    "infants_on_lap": "0",
+                    "type": "2",  # One way flight
+                    "deep_search": "true"
+                }
+                
+                flight_search = GoogleSearch(flight_params)
+                flight_results = flight_search.get_dict()
+            else:
+                # If no route found, skip Google Flights API
+                flight_results = {}
+            
+            # Display results for debugging
+            if flight_results:
+                st.write("🔍 Google Flights API Response:")
+                st.json(flight_results)
+            else:
+                st.info("No Google Flights data available - will use general search results")
+            
+            # Extract route from Google Flights results based on official API structure
+            if flight_results and "best_flights" in flight_results and flight_results["best_flights"]:
+                # Get the first best flight
+                best_flight = flight_results["best_flights"][0]
+                
+                if "flights" in best_flight and best_flight["flights"]:
+                    # Get the first flight segment
+                    first_flight = best_flight["flights"][0]
+                    
+                    # Extract departure and arrival information
+                    departure_airport = first_flight.get("departure_airport", {})
+                    arrival_airport = first_flight.get("arrival_airport", {})
+                    
+                    origin = departure_airport.get("id")
+                    destination = arrival_airport.get("id")
+                    
+                    if origin and destination:
+                        return {
+                            "origin": origin,
+                            "destination": destination,
+                            "title": f"Google Flights: {flight_number}",
+                            "snippet": f"Flight {flight_number} route information",
+                            "link": f"https://www.google.com/flights/search?q={flight_number}",
+                            "is_realtime": True,
+                            "source": "google_flights",
+                            "raw_data": best_flight,
+                            "departure_time": departure_airport.get("time"),
+                            "arrival_time": arrival_airport.get("time"),
+                            "airline": first_flight.get("airline"),
+                            "flight_number": first_flight.get("flight_number"),
+                            "duration": first_flight.get("duration")
+                        }
+            elif "other_flights" in flight_results and flight_results["other_flights"]:
+                # Try other flights if best_flights is empty
+                other_flight = flight_results["other_flights"][0]
+                
+                if "flights" in other_flight and other_flight["flights"]:
+                    first_flight = other_flight["flights"][0]
+                    
+                    departure_airport = first_flight.get("departure_airport", {})
+                    arrival_airport = first_flight.get("arrival_airport", {})
+                    
+                    origin = departure_airport.get("id")
+                    destination = arrival_airport.get("id")
+                    
+                    if origin and destination:
+                        return {
+                            "origin": origin,
+                            "destination": destination,
+                            "title": f"Google Flights: {flight_number}",
+                            "snippet": f"Flight {flight_number} route information",
+                            "link": f"https://www.google.com/flights/search?q={flight_number}",
+                            "is_realtime": True,
+                            "source": "google_flights",
+                            "raw_data": other_flight,
+                            "departure_time": departure_airport.get("time"),
+                            "arrival_time": arrival_airport.get("time"),
+                            "airline": first_flight.get("airline"),
+                            "flight_number": first_flight.get("flight_number"),
+                            "duration": first_flight.get("duration")
+                        }
+            elif "search_metadata" in flight_results:
+                # If no flights data but we have search metadata, the search worked
+                st.info("Google Flights API responded but no specific flight data found")
+            else:
+                st.warning("Unexpected response format from Google Flights API")
+        except Exception as e:
+            st.warning(f"Google Flights search failed: {e}")
+        
+        # If we found route information but Google Flights didn't work, use that info
+        if origin_code and destination_code:
+            return {
+                "origin": origin_code,
+                "destination": destination_code,
+                "title": f"Flight Route: {flight_number}",
+                "snippet": f"Flight {flight_number} route: {origin_code} to {destination_code}",
+                "link": f"https://www.google.com/flights/search?q={flight_number}",
+                "is_realtime": False,
+                "source": "google_search_route",
+                "raw_data": {"origin": origin_code, "destination": destination_code}
+            }
+        
+        # Fallback to regular Google search with flight-specific queries
+        search_queries = [
+            f"{flight_number} flight status today",
+            f"{flight_number} live flight tracking",
+            f"{flight_number} departure arrival status",
+            f"{flight_number} flight route schedule"
+        ]
+        
+        for query in search_queries:
+            params = {
+                "engine": "google",
+                "q": query,
+                "api_key": api_key,
+                "tbm": "nws",  # Search news for more recent results
+                "num": 10,     # Get more results
+                "gl": "us",    # US-focused results
+                "hl": "en"     # English language
+            }
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            
+            # If we get good results, break out of the loop
+            if "organic_results" in results and len(results["organic_results"]) > 0:
+                break
         
         # Debug: Show the raw JSON response
         st.write("🔍 SERP API Response:")
@@ -128,14 +297,28 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
         # Extract route information from search results
         if "organic_results" in results:
             import re
+            from datetime import datetime
             
-            # Common airport patterns and route indicators
+            # Enhanced patterns for real-time flight data
             route_patterns = [
                 r'(\w{3})\s*to\s*(\w{3})',  # "PHX to LAX"
                 r'(\w{3})\s*-\s*(\w{3})',   # "PHX-LAX"
                 r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
                 r'from\s+(\w{3})\s+to\s+(\w{3})',  # "from PHX to LAX"
                 r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
+                r'departure\s+(\w{3}).*arrival\s+(\w{3})',  # "departure PHX...arrival LAX"
+                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
+                r'(\w{3})\s*to\s*(\w{3})',  # "PHX to LAX"
+            ]
+            
+            # Time-based patterns for current flights
+            time_patterns = [
+                r'(\d{1,2}:\d{2})\s*(AM|PM)?',  # Time patterns
+                r'(\d{1,2}:\d{2})\s*(am|pm)?',
+                r'departed\s+(\d{1,2}:\d{2})',
+                r'arrived\s+(\d{1,2}:\d{2})',
+                r'scheduled\s+(\d{1,2}:\d{2})',
+                r'delayed\s+(\d{1,2}:\d{2})',
             ]
             
             # Airport name patterns (common airports)
@@ -165,13 +348,21 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
                 'austin': 'AUS', 'aus': 'AUS'
             }
             
-            for i, result in enumerate(results["organic_results"][:5]):  # Check first 5 results
+            # Check for flight tracking websites first (more likely to have real-time data)
+            flight_tracking_sites = ['flightaware.com', 'flightradar24.com', 'flightstats.com', 'google.com/flights']
+            
+            for i, result in enumerate(results["organic_results"][:10]):  # Check first 10 results
                 title = result.get("title", "")
                 snippet = result.get("snippet", "")
+                link = result.get("link", "")
                 content = (title + " " + snippet).lower()
                 
                 st.write(f"**Result {i+1}:** {title}")
                 st.write(f"**Snippet:** {snippet}")
+                st.write(f"**Link:** {link}")
+                
+                # Prioritize flight tracking websites
+                is_flight_tracking = any(site in link.lower() for site in flight_tracking_sites)
                 
                 # Try direct airport code patterns first
                 for pattern in route_patterns:
@@ -179,13 +370,26 @@ def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
                     if match:
                         origin, dest = match.groups()
                         if len(origin) == 3 and len(dest) == 3:
+                            # Extract time information if available
+                            time_info = ""
+                            for time_pattern in time_patterns:
+                                time_match = re.search(time_pattern, content, re.IGNORECASE)
+                                if time_match:
+                                    time_info = time_match.group(0)
+                                    break
+                            
                             st.success(f"Found route pattern: {origin} → {dest}")
+                            if time_info:
+                                st.info(f"Time info: {time_info}")
+                            
                             return {
                                 "origin": origin.upper(),
                                 "destination": dest.upper(),
                                 "title": result.get("title", ""),
                                 "snippet": result.get("snippet", ""),
-                                "link": result.get("link", "")
+                                "link": result.get("link", ""),
+                                "is_realtime": is_flight_tracking,
+                                "time_info": time_info
                             }
                 
                 # Try airport name patterns
