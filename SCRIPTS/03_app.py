@@ -63,6 +63,8 @@ def load_predictor():
         return None, None
 
 
+
+
 def main():
     st.set_page_config(
         page_title="Flight Delay Prediction", 
@@ -167,6 +169,8 @@ def main():
                         )
                     elif search_result and search_result.get("error"):
                         st.error(search_result["error"])
+                    else:
+                        st.warning("No result from SERP API. Please enter airports manually.")
         
         # Manual input fields
         st.markdown("---")
