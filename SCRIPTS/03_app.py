@@ -66,11 +66,11 @@ def load_predictor():
 def main():
     st.set_page_config(
         page_title="Flight Delay Prediction", 
-        page_icon="✈️", 
+        
         layout="centered"
     )
     
-    st.title("✈️ Flight Delay Prediction")
+    st.title("Flight Delay Prediction")
     st.caption("ML-powered delay prediction using BTS historical data")
     
     # Load predictor
@@ -78,7 +78,7 @@ def main():
     
     # Sidebar: Model info
     with st.sidebar:
-        st.subheader("🤖 Model Status")
+        st.subheader("Model Status")
         if predictor is None:
             st.error("Model not loaded. Run training pipeline first.")
             st.caption(f"Looking in: {ARTIFACT_DIR}")
@@ -90,14 +90,14 @@ def main():
             st.caption(f"Loaded from: {ARTIFACT_DIR}")
         
         st.markdown("---")
-        st.subheader("📋 Search History")
+        st.subheader("Search History")
         history_count = len(st.session_state.get("search_history", []))
         st.metric("Saved Predictions", f"{history_count}")
         if history_count > 0:
             st.caption("View in Search History tab")
         
         st.markdown("---")
-        st.subheader("🔑 SERP API Key")
+        st.subheader("SERP API Key")
         api_key = st.text_input(
             "API Key (optional)", 
             value=os.getenv("SERPAPI_API_KEY", ""),
@@ -107,7 +107,7 @@ def main():
             st.session_state["SERPAPI_API_KEY"] = api_key
     
     # Main tabs
-    tab1, tab2, tab3 = st.tabs(["🔮 Predict", "📊 Analytics", "📋 Search History"])
+    tab1, tab2, tab3 = st.tabs(["Predict", "Analytics", "Search History"])
     
     with tab1:
         # Check if we need to reload a previous prediction
@@ -153,7 +153,7 @@ def main():
         # SERP API search (optional)
         search_result = None
         if st.session_state.get("SERPAPI_API_KEY"):
-            if st.button("🔍 Search Route", use_container_width=True):
+            if st.button("Search Route", use_container_width=True):
                 with st.spinner("Searching..."):
                     search_result = search_flight_comprehensive(
                         flight_number=flight_input,
@@ -191,7 +191,7 @@ def main():
         )
         
         # Predict button
-        if st.button("🚀 Predict Delay", type="primary", use_container_width=True):
+        if st.button("Predict Delay", type="primary", use_container_width=True):
             if predictor is None:
                 st.error("❌ Predictor not available")
                 return
@@ -309,10 +309,10 @@ def main():
                 st.metric("Test Samples", f"{metadata.get('n_test', 0):,}")
                 st.metric("MAE Performance", f"{metadata.get('selected_mae', 0):.2f} min")
             
-            st.info("💡 Model trained on BTS historical delay patterns")
+            st.info("Model trained on BTS historical delay patterns")
 
     with tab3:
-        st.subheader("📋 Search History")
+        st.subheader("Search History")
         
         if "search_history" not in st.session_state or not st.session_state.search_history:
             st.info("No search history yet. Make some predictions to see them here!")
