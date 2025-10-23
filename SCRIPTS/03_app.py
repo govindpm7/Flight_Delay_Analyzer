@@ -1,892 +1,449 @@
+"""
+Streamlit Frontend - Lightweight Display Layer with Dropdowns
+All business logic delegated to modeling module
+"""
 from __future__ import annotations
 
-import json
 import os
 from datetime import date
-from typing import Optional
-
-import pickle
-import numpy as np
-import pandas as pd
 import streamlit as st
+import pandas as pd
 
 try:
-    from serpapi import GoogleSearch  # optional, only used if key is provided
-except Exception:  # keep app running without serpapi installed
+    from serpapi import GoogleSearch
+except Exception:
     GoogleSearch = None
 
-from utils import parse_flight_number, ConfidenceBand, confidence_badge_level
+from utils import parse_flight_number
+from modeling.model_loader import create_predictor
+from getSERP import search_flight_comprehensive
 
 
-def json_to_csv_helper(json_data, filename_prefix="data"):
-    """Helper function to convert JSON data to CSV format"""
-    import json
-    import pandas as pd
-    from datetime import datetime
-    
-    if isinstance(json_data, dict):
-        # Convert single dict to DataFrame
-        df = pd.DataFrame([json_data])
-    elif isinstance(json_data, list):
-        # Convert list of dicts to DataFrame
-        df = pd.DataFrame(json_data)
-    else:
-        st.error("JSON data must be a dictionary or list of dictionaries")
-        return None
-    
-    # Generate filename with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{filename_prefix}_{timestamp}.csv"
-    
-    # Convert to CSV
-    csv_data = df.to_csv(index=False)
-    
-    return csv_data, filename
+# Configuration
+ARTIFACT_DIR = "../OUTPUTS"  # Use relative path from SCRIPTS directory
 
-
-ARTIFACT_DIR = "OUTPUTS"
-MODEL_PATH = os.path.join(ARTIFACT_DIR, "model.pkl")
-META_PATH = os.path.join(ARTIFACT_DIR, "metadata.json")
-LOOKUP_PATH = os.path.join(ARTIFACT_DIR, "flight_lookup.csv")
-BTS_AIRPORT_PATH = os.path.join(ARTIFACT_DIR, "bts_lookup_airport.csv")
-BTS_CARRIER_PATH = os.path.join(ARTIFACT_DIR, "bts_lookup_carrier.csv")
-
-
-@st.cache_resource(show_spinner=False)
-def load_model():
-    if not os.path.exists(MODEL_PATH):
-        return None
-    try:
-        with open(MODEL_PATH, "rb") as f:
-            return pickle.load(f)
-    except Exception:
-        return None
-
-
-@st.cache_resource(show_spinner=False)
-def load_metadata():
-    if not os.path.exists(META_PATH):
-        return None
-    try:
-        with open(META_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
-
-
-@st.cache_data(show_spinner=False)
-def load_lookup():
-    if not os.path.exists(LOOKUP_PATH):
-        return None
-    try:
-        df = pd.read_csv(LOOKUP_PATH)
-        return df
-    except Exception:
-        return None
-
-
-@st.cache_data(show_spinner=False)
-def load_bts_airport_lookup():
-    if not os.path.exists(BTS_AIRPORT_PATH):
-        return None
-    try:
-        df = pd.read_csv(BTS_AIRPORT_PATH)
-        return df
-    except Exception:
-        return None
-
-
-@st.cache_data(show_spinner=False)
-def load_bts_carrier_lookup():
-    if not os.path.exists(BTS_CARRIER_PATH):
-        return None
-    try:
-        df = pd.read_csv(BTS_CARRIER_PATH)
-        return df
-    except Exception:
-        return None
-
-
-def search_flight_route(flight_number: str, api_key: str) -> Optional[dict]:
-    """Search for flight route information using SERP API"""
-    if not api_key or GoogleSearch is None:
-        return None
-    
-    try:
-        # First try to get route information using general Google search
-        # Then use that route info for Google Flights API
-        try:
-            # Step 1: Use general Google search to find route information
-            route_search_params = {
-                "engine": "google",
-                "q": f"{flight_number} flight route origin destination",
-                "api_key": api_key,
-                "gl": "us",
-                "hl": "en",
-                "num": "10"
-            }
-            
-            route_search = GoogleSearch(route_search_params)
-            route_results = route_search.get_dict()
-            
-            # Extract route information from search results
-            origin_code = None
-            destination_code = None
-            
-            if "organic_results" in route_results:
-                for result in route_results["organic_results"]:
-                    snippet = result.get("snippet", "").upper()
-                    title = result.get("title", "").upper()
-                    combined_text = f"{title} {snippet}"
-                    
-                    # Look for airport codes in the text
-                    import re
-                    airport_pattern = r'\b([A-Z]{3})\s*(?:to|→|-|–)\s*([A-Z]{3})\b'
-                    match = re.search(airport_pattern, combined_text)
-                    if match:
-                        origin_code = match.group(1)
-                        destination_code = match.group(2)
-                        break
-            
-            # Step 2: If we found route info, try Google Flights API
-            if origin_code and destination_code:
-                from datetime import date
-                today = date.today().strftime("%Y-%m-%d")
-                
-                flight_params = {
-                    "engine": "google_flights",
-                    "departure_id": origin_code,
-                    "arrival_id": destination_code,
-                    "api_key": api_key,
-                    "gl": "us",
-                    "hl": "en",
-                    "outbound_date": today,
-                    "currency": "USD",
-                    "adults": "1",
-                    "children": "0",
-                    "infants_in_seat": "0",
-                    "infants_on_lap": "0",
-                    "type": "2",  # One way flight
-                    "deep_search": "true"
-                }
-                
-                flight_search = GoogleSearch(flight_params)
-                flight_results = flight_search.get_dict()
-            else:
-                # If no route found, skip Google Flights API
-                flight_results = {}
-            
-            # Display results for debugging
-            if flight_results:
-                st.write("🔍 Google Flights API Response:")
-                st.json(flight_results)
-            else:
-                st.info("No Google Flights data available - will use general search results")
-            
-            # Extract route from Google Flights results based on official API structure
-            if flight_results and "best_flights" in flight_results and flight_results["best_flights"]:
-                # Get the first best flight
-                best_flight = flight_results["best_flights"][0]
-                
-                if "flights" in best_flight and best_flight["flights"]:
-                    # Get the first flight segment
-                    first_flight = best_flight["flights"][0]
-                    
-                    # Extract departure and arrival information
-                    departure_airport = first_flight.get("departure_airport", {})
-                    arrival_airport = first_flight.get("arrival_airport", {})
-                    
-                    origin = departure_airport.get("id")
-                    destination = arrival_airport.get("id")
-                    
-                    if origin and destination:
-                        return {
-                            "origin": origin,
-                            "destination": destination,
-                            "title": f"Google Flights: {flight_number}",
-                            "snippet": f"Flight {flight_number} route information",
-                            "link": f"https://www.google.com/flights/search?q={flight_number}",
-                            "is_realtime": True,
-                            "source": "google_flights",
-                            "raw_data": best_flight,
-                            "departure_time": departure_airport.get("time"),
-                            "arrival_time": arrival_airport.get("time"),
-                            "airline": first_flight.get("airline"),
-                            "flight_number": first_flight.get("flight_number"),
-                            "duration": first_flight.get("duration")
-                        }
-            elif "other_flights" in flight_results and flight_results["other_flights"]:
-                # Try other flights if best_flights is empty
-                other_flight = flight_results["other_flights"][0]
-                
-                if "flights" in other_flight and other_flight["flights"]:
-                    first_flight = other_flight["flights"][0]
-                    
-                    departure_airport = first_flight.get("departure_airport", {})
-                    arrival_airport = first_flight.get("arrival_airport", {})
-                    
-                    origin = departure_airport.get("id")
-                    destination = arrival_airport.get("id")
-                    
-                    if origin and destination:
-                        return {
-                            "origin": origin,
-                            "destination": destination,
-                            "title": f"Google Flights: {flight_number}",
-                            "snippet": f"Flight {flight_number} route information",
-                            "link": f"https://www.google.com/flights/search?q={flight_number}",
-                            "is_realtime": True,
-                            "source": "google_flights",
-                            "raw_data": other_flight,
-                            "departure_time": departure_airport.get("time"),
-                            "arrival_time": arrival_airport.get("time"),
-                            "airline": first_flight.get("airline"),
-                            "flight_number": first_flight.get("flight_number"),
-                            "duration": first_flight.get("duration")
-                        }
-            elif "search_metadata" in flight_results:
-                # If no flights data but we have search metadata, the search worked
-                st.info("Google Flights API responded but no specific flight data found")
-            else:
-                st.warning("Unexpected response format from Google Flights API")
-        except Exception as e:
-            st.warning(f"Google Flights search failed: {e}")
-        
-        # If we found route information but Google Flights didn't work, use that info
-        if origin_code and destination_code:
-            return {
-                "origin": origin_code,
-                "destination": destination_code,
-                "title": f"Flight Route: {flight_number}",
-                "snippet": f"Flight {flight_number} route: {origin_code} to {destination_code}",
-                "link": f"https://www.google.com/flights/search?q={flight_number}",
-                "is_realtime": False,
-                "source": "google_search_route",
-                "raw_data": {"origin": origin_code, "destination": destination_code}
-            }
-        
-        # Fallback to regular Google search with flight-specific queries
-        search_queries = [
-            f"{flight_number} flight status today",
-            f"{flight_number} live flight tracking",
-            f"{flight_number} departure arrival status",
-            f"{flight_number} flight route schedule"
-        ]
-        
-        for query in search_queries:
-            params = {
-                "engine": "google",
-                "q": query,
-                "api_key": api_key,
-                "tbm": "nws",  # Search news for more recent results
-                "num": 10,     # Get more results
-                "gl": "us",    # US-focused results
-                "hl": "en"     # English language
-            }
-            search = GoogleSearch(params)
-            results = search.get_dict()
-            
-            # If we get good results, break out of the loop
-            if "organic_results" in results and len(results["organic_results"]) > 0:
-                break
-        
-        # Debug: Show the raw JSON response
-        st.write("🔍 SERP API Response:")
-        st.json(results)
-        
-        # Extract route information from search results
-        if "organic_results" in results:
-            import re
-            from datetime import datetime
-            
-            # Enhanced patterns for real-time flight data
-            route_patterns = [
-                r'(\w{3})\s*to\s*(\w{3})',  # "PHX to LAX"
-                r'(\w{3})\s*-\s*(\w{3})',   # "PHX-LAX"
-                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
-                r'from\s+(\w{3})\s+to\s+(\w{3})',  # "from PHX to LAX"
-                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
-                r'departure\s+(\w{3}).*arrival\s+(\w{3})',  # "departure PHX...arrival LAX"
-                r'(\w{3})\s*→\s*(\w{3})',   # "PHX → LAX"
-                r'(\w{3})\s*to\s*(\w{3})',  # "PHX to LAX"
-            ]
-            
-            # Time-based patterns for current flights
-            time_patterns = [
-                r'(\d{1,2}:\d{2})\s*(AM|PM)?',  # Time patterns
-                r'(\d{1,2}:\d{2})\s*(am|pm)?',
-                r'departed\s+(\d{1,2}:\d{2})',
-                r'arrived\s+(\d{1,2}:\d{2})',
-                r'scheduled\s+(\d{1,2}:\d{2})',
-                r'delayed\s+(\d{1,2}:\d{2})',
-            ]
-            
-            # Airport name patterns (common airports)
-            airport_names = {
-                'phoenix': 'PHX', 'sky harbor': 'PHX',
-                'los angeles': 'LAX', 'lax': 'LAX',
-                'atlanta': 'ATL', 'hartsfield': 'ATL',
-                'denver': 'DEN', 'den': 'DEN',
-                'chicago': 'ORD', 'o\'hare': 'ORD',
-                'dallas': 'DFW', 'fort worth': 'DFW',
-                'houston': 'IAH', 'bush': 'IAH',
-                'miami': 'MIA', 'mia': 'MIA',
-                'las vegas': 'LAS', 'las': 'LAS',
-                'seattle': 'SEA', 'sea': 'SEA',
-                'boston': 'BOS', 'bos': 'BOS',
-                'new york': 'JFK', 'jfk': 'JFK',
-                'washington': 'IAD', 'dulles': 'IAD',
-                'san francisco': 'SFO', 'sfo': 'SFO',
-                'orlando': 'MCO', 'mco': 'MCO',
-                'charlotte': 'CLT', 'clt': 'CLT',
-                'philadelphia': 'PHL', 'phl': 'PHL',
-                'detroit': 'DTW', 'dtw': 'DTW',
-                'minneapolis': 'MSP', 'msp': 'MSP',
-                'salt lake': 'SLC', 'slc': 'SLC',
-                'baltimore': 'BWI', 'bwi': 'BWI',
-                'nashville': 'BNA', 'bna': 'BNA',
-                'austin': 'AUS', 'aus': 'AUS'
-            }
-            
-            # Check for flight tracking websites first (more likely to have real-time data)
-            flight_tracking_sites = ['flightaware.com', 'flightradar24.com', 'flightstats.com', 'google.com/flights']
-            
-            for i, result in enumerate(results["organic_results"][:10]):  # Check first 10 results
-                title = result.get("title", "")
-                snippet = result.get("snippet", "")
-                link = result.get("link", "")
-                content = (title + " " + snippet).lower()
-                
-                st.write(f"**Result {i+1}:** {title}")
-                st.write(f"**Snippet:** {snippet}")
-                st.write(f"**Link:** {link}")
-                
-                # Prioritize flight tracking websites
-                is_flight_tracking = any(site in link.lower() for site in flight_tracking_sites)
-                
-                # Try direct airport code patterns first
-                for pattern in route_patterns:
-                    match = re.search(pattern, content, re.IGNORECASE)
-                    if match:
-                        origin, dest = match.groups()
-                        if len(origin) == 3 and len(dest) == 3:
-                            # Extract time information if available
-                            time_info = ""
-                            for time_pattern in time_patterns:
-                                time_match = re.search(time_pattern, content, re.IGNORECASE)
-                                if time_match:
-                                    time_info = time_match.group(0)
-                                    break
-                            
-                            st.success(f"Found route pattern: {origin} → {dest}")
-                            if time_info:
-                                st.info(f"Time info: {time_info}")
-                            
-                            return {
-                                "origin": origin.upper(),
-                                "destination": dest.upper(),
-                                "title": result.get("title", ""),
-                                "snippet": result.get("snippet", ""),
-                                "link": result.get("link", ""),
-                                "is_realtime": is_flight_tracking,
-                                "time_info": time_info
-                            }
-                
-                # Try airport name patterns
-                for name, code in airport_names.items():
-                    if name in content:
-                        # Look for another airport in the same text
-                        for other_name, other_code in airport_names.items():
-                            if other_name != name and other_name in content:
-                                # Try to determine which is origin/destination
-                                name_pos = content.find(name)
-                                other_pos = content.find(other_name)
-                                if name_pos < other_pos:
-                                    st.success(f"Found airport names: {code} → {other_code}")
-                                    return {
-                                        "origin": code,
-                                        "destination": other_code,
-                                        "title": result.get("title", ""),
-                                        "snippet": result.get("snippet", ""),
-                                        "link": result.get("link", "")
-                                    }
-                                else:
-                                    st.success(f"Found airport names: {other_code} → {code}")
-                                    return {
-                                        "origin": other_code,
-                                        "destination": code,
-                                        "title": result.get("title", ""),
-                                        "snippet": result.get("snippet", ""),
-                                        "link": result.get("link", "")
-                                    }
-                
-                # Fallback: look for any 3-letter codes
-                airport_pattern = r'\b[A-Z]{3}\b'
-                airports = re.findall(airport_pattern, title + " " + snippet)
-                if len(airports) >= 2:
-                    st.success(f"Found airport codes: {airports[0]} → {airports[1]}")
-                    return {
-                        "origin": airports[0],
-                        "destination": airports[1],
-                        "title": result.get("title", ""),
-                        "snippet": result.get("snippet", ""),
-                        "link": result.get("link", "")
-                    }
-    except Exception as e:
-        st.error(f"Search failed: {e}")
-    
-    return None
-
-
-def save_search_history(search_result: dict, flight_number: str):
-    """Save search result to session state history"""
-    if "search_history" not in st.session_state:
-        st.session_state.search_history = []
-    
-    search_result["flight_number"] = flight_number
-    search_result["timestamp"] = pd.Timestamp.now().isoformat()
-    st.session_state.search_history.append(search_result)
-
-
-def display_delay_cause_analysis(airport: str, carrier: str, bts_airport: pd.DataFrame, bts_carrier: pd.DataFrame):
-    """Display BTS delay cause analysis for airport and carrier"""
-    st.subheader("📊 Delay Cause Analysis (BTS Data)")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Airport Analysis**")
-        airport_data = bts_airport[bts_airport['ORIGIN'] == airport.upper()]
-        if not airport_data.empty:
-            data = airport_data.iloc[0]
-            
-            # Delay rates
-            st.metric("Total Delay Rate", f"{data['total_delay_rate_origin']:.1%}")
-            st.metric("Avg Delay Minutes", f"{data['avg_delay_minutes_origin']:.1f} min")
-            
-            # Delay causes
-            causes = {
-                'Carrier Issues': data['carrier_delay_rate_origin'],
-                'Weather': data['weather_delay_rate_origin'],
-                'NAS (Air Traffic)': data['nas_delay_rate_origin'],
-                'Security': data['security_delay_rate_origin'],
-                'Late Aircraft': data['late_aircraft_delay_rate_origin']
-            }
-            
-            st.markdown("**Delay Causes:**")
-            for cause, rate in causes.items():
-                st.write(f"• {cause}: {rate:.1%}")
-        else:
-            st.info(f"No BTS data available for airport {airport}")
-    
-    with col2:
-        st.markdown("**Carrier Analysis**")
-        carrier_data = bts_carrier[bts_carrier['OP_CARRIER'] == carrier.upper()]
-        if not carrier_data.empty:
-            data = carrier_data.iloc[0]
-            
-            # Delay rates
-            st.metric("Total Delay Rate", f"{data['total_delay_rate_origin']:.1%}")
-            st.metric("Avg Delay Minutes", f"{data['avg_delay_minutes_origin']:.1f} min")
-            
-            # Delay causes
-            causes = {
-                'Carrier Issues': data['carrier_delay_rate_origin'],
-                'Weather': data['weather_delay_rate_origin'],
-                'NAS (Air Traffic)': data['nas_delay_rate_origin'],
-                'Security': data['security_delay_rate_origin'],
-                'Late Aircraft': data['late_aircraft_delay_rate_origin']
-            }
-            
-            st.markdown("**Delay Causes:**")
-            for cause, rate in causes.items():
-                st.write(f"• {cause}: {rate:.1%}")
-        else:
-            st.info(f"No BTS data available for carrier {carrier}")
-
-
-def display_delay_cause_insights(bts_airport: pd.DataFrame, bts_carrier: pd.DataFrame):
-    """Display general delay cause insights from BTS data"""
-    st.subheader("🔍 Delay Cause Insights")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Top Delayed Airports**")
-        top_airports = bts_airport.nlargest(5, 'total_delay_rate_origin')
-        for _, row in top_airports.iterrows():
-            st.write(f"• {row['ORIGIN']}: {row['total_delay_rate_origin']:.1%} delay rate")
-    
-    with col2:
-        st.markdown("**Top Delayed Carriers**")
-        top_carriers = bts_carrier.nlargest(5, 'total_delay_rate_origin')
-        for _, row in top_carriers.iterrows():
-            st.write(f"• {row['OP_CARRIER']}: {row['total_delay_rate_origin']:.1%} delay rate")
-    
-    # Overall delay cause breakdown
-    st.markdown("**Overall Delay Cause Breakdown**")
-    if not bts_airport.empty:
-        avg_causes = {
-            'Carrier Issues': bts_airport['carrier_delay_rate_origin'].mean(),
-            'Weather': bts_airport['weather_delay_rate_origin'].mean(),
-            'NAS (Air Traffic)': bts_airport['nas_delay_rate_origin'].mean(),
-            'Security': bts_airport['security_delay_rate_origin'].mean(),
-            'Late Aircraft': bts_airport['late_aircraft_delay_rate_origin'].mean()
+# Airline mappings for user-friendly display
+AIRLINE_MAPPINGS = {
+            "American Airlines": "AA",
+            "Delta Air Lines": "DL", 
+            "United Airlines": "UA",
+            "Southwest Airlines": "WN",
+            "JetBlue Airways": "B6",
+            "Alaska Airlines": "AS",
+            "Hawaiian Airlines": "HA",
+            "Frontier Airlines": "F9",
+            "Spirit Airlines": "NK",
+            "Allegiant Air": "G4",
+            "Sun Country Airlines": "SY",
+            "Breeze Airways": "MX",
+            "Avelo Airlines": "XP",
+            "Cape Air": "9K",
+            "Republic Airways": "YX",
+            "SkyWest Airlines": "OO",
+            "Envoy Air": "MQ",
+            "Mesa Airlines": "YV",
+            "Endeavor Air": "9E",
+            "PSA Airlines": "OH"
         }
         
-        # Create a simple bar chart using Streamlit's built-in charting
-        chart_data = pd.DataFrame({
-            'Delay Cause': list(avg_causes.keys()),
-            'Average Rate': list(avg_causes.values())
-        })
-        
-        st.bar_chart(chart_data.set_index('Delay Cause'))
+
+
+@st.cache_resource(show_spinner=False)
+def load_predictor():
+    """Load predictor once and cache"""
+    try:
+        predictor, metadata = create_predictor(ARTIFACT_DIR)
+        if predictor is None:
+            st.error(f"Failed to load predictor from: {ARTIFACT_DIR}")
+            st.error(f"Current working directory: {os.getcwd()}")
+            st.error(f"Looking for OUTPUTS at: {os.path.abspath(ARTIFACT_DIR)}")
+        return predictor, metadata
+    except Exception as e:
+        st.error(f"Error loading predictor: {e}")
+        return None, None
 
 
 def main():
-    st.set_page_config(page_title="Flight Delay Prediction (MVP)", page_icon="✈️", layout="centered")
-    st.title("Flight Delay Prediction (MVP)")
-    st.caption("Historical-patterns baseline with SERP API route search.")
-
-    model = load_model()
-    meta = load_metadata()
-    lookup = load_lookup()
-    bts_airport = load_bts_airport_lookup()
-    bts_carrier = load_bts_carrier_lookup()
-
-    # Create tabs
-    tab1, tab2, tab3 = st.tabs(["Flight Prediction", "Delay Analysis", "Search History"])
-
+    st.set_page_config(
+        page_title="Flight Delay Prediction", 
+        page_icon="✈️", 
+        layout="centered"
+    )
+    
+    st.title("✈️ Flight Delay Prediction")
+    st.caption("ML-powered delay prediction using BTS historical data")
+    
+    # Load predictor
+    predictor, metadata = load_predictor()
+    
+    # Sidebar: Model info
     with st.sidebar:
-        st.subheader("Model Status")
-        if meta is None or model is None:
-            st.error("Model artifacts not found. Run training first (see README).")
+        st.subheader("🤖 Model Status")
+        if predictor is None:
+            st.error("Model not loaded. Run training pipeline first.")
+            st.caption(f"Looking in: {ARTIFACT_DIR}")
+            st.caption(f"Working dir: {os.getcwd()}")
         else:
-            st.success(f"Loaded model: {meta.get('best_model','?')} (MAE ~ {meta.get('selected_mae','?'):.1f} min)")
-            st.caption(f"Train: {meta.get('n_train',0):,}  Test: {meta.get('n_test',0):,}")
-
+            st.success(f"✓ {metadata.get('best_model', 'Model')} loaded")
+            st.metric("Model MAE", f"{metadata.get('selected_mae', 0):.1f} min")
+            st.caption(f"Trained on {metadata.get('n_train', 0):,} flights")
+            st.caption(f"Loaded from: {ARTIFACT_DIR}")
+        
         st.markdown("---")
-        st.subheader("SERP API Configuration")
-        default_key = os.getenv("SERPAPI_API_KEY", "")
-        key = st.text_input("SERPAPI_API_KEY", value=default_key, type="password", help="Required for route search functionality.")
-        if key:
-            st.session_state["SERPAPI_API_KEY"] = key
-            st.caption("Key set for this session.")
-        else:
-            st.caption("Provide a SERP API key for route search.")
-
-        # Optional quick check
-        if st.button("Test SERP Key", use_container_width=True):
-            if not key:
-                st.warning("No key provided.")
-            elif GoogleSearch is None:
-                st.error("serpapi package not installed. See requirements.txt")
-            else:
-                try:
-                    params = {
-                        "engine": "google",
-                        "q": "site:google.com flights",
-                        "api_key": key,
-                    }
-                    _ = GoogleSearch(params).get_dict()
-                    st.success("SERP API key appears valid.")
-                except Exception as e:
-                    st.error(f"SERP API check failed: {e}")
-
+        st.subheader("📋 Search History")
+        history_count = len(st.session_state.get("search_history", []))
+        st.metric("Saved Predictions", f"{history_count}")
+        if history_count > 0:
+            st.caption("View in Search History tab")
+        
+        st.markdown("---")
+        st.subheader("🔑 SERP API Key")
+        api_key = st.text_input(
+            "API Key (optional)", 
+            value=os.getenv("SERPAPI_API_KEY", ""),
+            type="password"
+        )
+        if api_key:
+            st.session_state["SERPAPI_API_KEY"] = api_key
+    
+    # Main tabs
+    tab1, tab2, tab3 = st.tabs(["🔮 Predict", "📊 Analytics", "📋 Search History"])
+    
     with tab1:
-        st.subheader("Enter Flight Details")
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            flight_input = st.text_input("Flight number (e.g., AA1234)", value="UA1234")
-        with c2:
+        # Check if we need to reload a previous prediction
+        if "reload_flight" in st.session_state:
+            reload_entry = st.session_state["reload_flight"]
+            st.info(f"🔄 Reloading: {reload_entry['flight_number']} ({reload_entry['origin']} → {reload_entry['destination']})")
+            del st.session_state["reload_flight"]
+        
+        # Input section with dropdowns
+        st.subheader("Flight Information")
+        
+        # Airline and Flight Number Selection
+        col1, col2, col3 = st.columns([2, 2, 1])
+        
+        with col1:
+            # Airline dropdown
+            selected_airline_name = st.selectbox(
+                "Select Airline",
+                options=list(AIRLINE_MAPPINGS.keys()),
+                index=2,  # Default to United Airlines
+                key="airline_selector"
+            )
+            selected_airline_code = AIRLINE_MAPPINGS[selected_airline_name]
+        
+        with col2:
+            # Flight number manual input
+            flight_number = st.text_input(
+                "Flight Number", 
+                value="1234",
+                placeholder="e.g., 1234",
+                key="flight_number_input"
+            )
+        
+        with col3:
             flight_date = st.date_input("Date", value=date.today())
-
-        # Search for route information
+        
+        # Combine airline and flight number
+        flight_input = f"{selected_airline_code}{flight_number}"
+        
+        # Display the combined flight number
+        st.info(f"🔍 Selected: **{flight_input}** ({selected_airline_name})")
+        
+        # SERP API search (optional)
         search_result = None
-        if flight_input and st.session_state.get("SERPAPI_API_KEY"):
-            if st.button("Search Route", use_container_width=True):
-                with st.spinner("Searching for flight route..."):
-                    search_result = search_flight_route(flight_input, st.session_state["SERPAPI_API_KEY"])
-                    if search_result:
-                        save_search_history(search_result, flight_input)
-                        st.success(f"Found route: {search_result['origin']} → {search_result['destination']}")
-                    else:
-                        st.warning("No route information found. Please enter manually.")
-
-        # Manual entry fields
-        st.subheader("Flight Details")
+        if st.session_state.get("SERPAPI_API_KEY"):
+            if st.button("🔍 Search Route", use_container_width=True):
+                with st.spinner("Searching..."):
+                    search_result = search_flight_comprehensive(
+                        flight_number=flight_input,
+                        flight_date=flight_date,
+                        api_key=st.session_state["SERPAPI_API_KEY"],
+                        include_status=True
+                    )
+                    if search_result and not search_result.get("error"):
+                        st.success(
+                            f"Found: {search_result.get('origin', 'N/A')} → {search_result.get('destination', 'N/A')}"
+                        )
+                    elif search_result and search_result.get("error"):
+                        st.error(search_result["error"])
+        
+        # Manual input fields
+        st.markdown("---")
+        st.subheader("Route Information")
+        
         col1, col2, col3 = st.columns(3)
-        origin = col1.text_input("Origin (IATA)", value=search_result.get("origin", "") if search_result else "")
-        dest = col2.text_input("Destination (IATA)", value=search_result.get("destination", "") if search_result else "")
-        dep_hour = col3.number_input("Departure hour (0-23)", min_value=0, max_value=23, value=13)
-
-        predict_btn = st.button("Predict Delay")
-
-        if predict_btn:
-            if model is None:
-                st.error("Model not available. Please run training.")
+        origin = col1.text_input(
+            "Origin Airport (IATA)", 
+            value=search_result.get("origin", "") if search_result else "",
+            placeholder="e.g., LAX"
+        )
+        dest = col2.text_input(
+            "Destination Airport (IATA)",
+            value=search_result.get("destination", "") if search_result else "",
+            placeholder="e.g., JFK"
+        )
+        dep_hour = col3.number_input(
+            "Departure Hour", 
+            min_value=0, 
+            max_value=23, 
+            value=13
+        )
+        
+        # Predict button
+        if st.button("🚀 Predict Delay", type="primary", use_container_width=True):
+            if predictor is None:
+                st.error("❌ Predictor not available")
                 return
 
-            parsed = parse_flight_number(flight_input)
-            if not parsed:
-                st.warning("Invalid flight format. Expect like 'AA1234'.")
+            if not origin or not dest:
+                st.error("Please provide origin and destination airports")
                 return
-            carrier, number = parsed
-
-            # Build single-row feature frame matching training features
-            route = f"{origin.upper()}-{dest.upper()}"
-            dow = pd.Timestamp(flight_date).weekday()
-            month = pd.Timestamp(flight_date).month
-            is_weekend = 1 if dow in (5, 6) else 0
-
-            # Get historical averages from lookup if available
-            route_avg_delay = 0.0
-            origin_avg_delay = 0.0
-            airline_avg_delay = 0.0
             
-            if lookup is not None:
-                # Try to get route-specific averages
-                route_data = lookup[lookup["route"] == route]
-                if not route_data.empty:
-                    route_avg_delay = route_data["avg_delay"].iloc[0] if "avg_delay" in route_data.columns else 0.0
-                
-                # Try to get origin-specific averages
-                origin_data = lookup[lookup["ORIGIN"] == origin.upper()]
-                if not origin_data.empty:
-                    origin_avg_delay = origin_data["avg_delay"].iloc[0] if "avg_delay" in origin_data.columns else 0.0
-                
-                # Try to get airline-specific averages
-                airline_data = lookup[lookup["OP_CARRIER"] == carrier]
-                if not airline_data.empty:
-                    airline_avg_delay = airline_data["avg_delay"].iloc[0] if "avg_delay" in airline_data.columns else 0.0
-
-            # Get BTS delay cause features
-            bts_features = {}
-            if bts_airport is not None:
-                airport_data = bts_airport[bts_airport['ORIGIN'] == origin.upper()]
-                if not airport_data.empty:
-                    data = airport_data.iloc[0]
-                    bts_features.update({
-                        'total_delay_rate_origin': data.get('total_delay_rate_origin', 0),
-                        'carrier_delay_rate_origin': data.get('carrier_delay_rate_origin', 0),
-                        'weather_delay_rate_origin': data.get('weather_delay_rate_origin', 0),
-                        'nas_delay_rate_origin': data.get('nas_delay_rate_origin', 0),
-                        'security_delay_rate_origin': data.get('security_delay_rate_origin', 0),
-                        'late_aircraft_delay_rate_origin': data.get('late_aircraft_delay_rate_origin', 0),
-                        'avg_delay_minutes_origin': data.get('avg_delay_minutes_origin', 0),
-                        'avg_carrier_delay_origin': data.get('avg_carrier_delay_origin', 0),
-                        'avg_weather_delay_origin': data.get('avg_weather_delay_origin', 0),
-                        'avg_nas_delay_origin': data.get('avg_nas_delay_origin', 0),
-                        'avg_security_delay_origin': data.get('avg_security_delay_origin', 0),
-                        'avg_late_aircraft_delay_origin': data.get('avg_late_aircraft_delay_origin', 0),
-                    })
-            
-            if bts_carrier is not None:
-                carrier_data = bts_carrier[bts_carrier['OP_CARRIER'] == carrier.upper()]
-                if not carrier_data.empty:
-                    data = carrier_data.iloc[0]
-                    bts_features.update({
-                        'total_delay_rate_dest': data.get('total_delay_rate_origin', 0),
-                        'carrier_delay_rate_dest': data.get('carrier_delay_rate_origin', 0),
-                        'weather_delay_rate_dest': data.get('weather_delay_rate_origin', 0),
-                        'nas_delay_rate_dest': data.get('nas_delay_rate_origin', 0),
-                        'security_delay_rate_dest': data.get('security_delay_rate_origin', 0),
-                        'late_aircraft_delay_rate_dest': data.get('late_aircraft_delay_rate_origin', 0),
-                        'avg_delay_minutes_dest': data.get('avg_delay_minutes_origin', 0),
-                        'avg_carrier_delay_dest': data.get('avg_carrier_delay_origin', 0),
-                        'avg_weather_delay_dest': data.get('avg_weather_delay_origin', 0),
-                        'avg_nas_delay_dest': data.get('avg_nas_delay_origin', 0),
-                        'avg_security_delay_dest': data.get('avg_security_delay_origin', 0),
-                        'avg_late_aircraft_delay_dest': data.get('avg_late_aircraft_delay_origin', 0),
-                    })
-            
-            # Fill missing BTS features with zeros
-            bts_feature_names = [
-                'total_delay_rate_origin', 'carrier_delay_rate_origin', 'weather_delay_rate_origin',
-                'nas_delay_rate_origin', 'security_delay_rate_origin', 'late_aircraft_delay_rate_origin',
-                'avg_delay_minutes_origin', 'avg_carrier_delay_origin', 'avg_weather_delay_origin',
-                'avg_nas_delay_origin', 'avg_security_delay_origin', 'avg_late_aircraft_delay_origin',
-                'total_delay_rate_dest', 'carrier_delay_rate_dest', 'weather_delay_rate_dest',
-                'nas_delay_rate_dest', 'security_delay_rate_dest', 'late_aircraft_delay_rate_dest',
-                'avg_delay_minutes_dest', 'avg_carrier_delay_dest', 'avg_weather_delay_dest',
-                'avg_nas_delay_dest', 'avg_security_delay_dest', 'avg_late_aircraft_delay_dest'
-            ]
-            
-            for feature in bts_feature_names:
-                if feature not in bts_features:
-                    bts_features[feature] = 0.0
-
-            # Get actual distance from lookup data
-            distance = 500.0  # Default fallback
-            if lookup is not None:
-                # Try to get distance from route data
-                route_data = lookup[lookup["route"] == route]
-                if not route_data.empty and "DISTANCE" in route_data.columns:
-                    distance = route_data["DISTANCE"].iloc[0]
-                else:
-                    # Try to get distance from origin-destination pair
-                    origin_dest_data = lookup[(lookup["ORIGIN"] == origin.upper()) & (lookup["DEST"] == dest.upper())]
-                    if not origin_dest_data.empty and "DISTANCE" in origin_dest_data.columns:
-                        distance = origin_dest_data["DISTANCE"].iloc[0]
-
-            # Create feature dictionary with all features
-            feature_dict = {
-                "dep_hour": int(dep_hour),
-                "dow": int(dow),
-                "month": int(month),
-                "is_weekend": int(is_weekend),
-                "DISTANCE": float(distance),
-                "route": route,
-                "ORIGIN": origin.upper(),
-                "DEST": dest.upper(),
-                "OP_CARRIER": carrier,
-                "route_avg_delay": float(route_avg_delay),
-                "origin_avg_delay": float(origin_avg_delay),
-                "airline_avg_delay": float(airline_avg_delay),
-            }
-            
-            # Add BTS features
-            feature_dict.update(bts_features)
-            
-            X = pd.DataFrame([feature_dict])
-
+            # Generate prediction (all logic in modeling layer)
             try:
-                y_hat = float(model.predict(X)[0])
-            except Exception as exc:
-                st.error(f"Unable to generate prediction: {exc}")
-                return
-
-            mae = float(meta.get("selected_mae", 20.0)) if meta else 20.0
-            band = ConfidenceBand(point_minutes=y_hat, half_width_minutes=mae)
-            badge = confidence_badge_level(mae)
-
-            st.markdown("---")
-            st.subheader(f"Flight {flight_input.upper()} on {flight_date.isoformat()} — {origin.upper()} → {dest.upper()}")
-            st.metric(label=f"Predicted Delay (± MAE)", value=f"{y_hat:.0f} min", delta=f"± {mae:.0f} min")
-            st.caption(f"Confidence: {badge}")
-
-            # Feature contributions (simple proxy): show input features in a table
-            with st.expander("Inputs used"):
-                st.dataframe(X.T, use_container_width=True)
-
-            # Display delay cause analysis if BTS data is available
-            if bts_airport is not None and bts_carrier is not None:
-                display_delay_cause_analysis(origin, carrier, bts_airport, bts_carrier)
-
-            st.info("This MVP uses historical patterns with SERP API route search and BTS delay cause data for enhanced accuracy.")
+                with st.spinner("Generating prediction..."):
+                    result = predictor.predict(
+                        carrier=selected_airline_code,
+                        origin=origin,
+                        dest=dest,
+                        flight_date=flight_date,
+                        dep_hour=dep_hour
+                    )
+                
+                # Display results
+                st.markdown("---")
+                st.subheader(f"✈️ {flight_input}: {origin} → {dest}")
+                
+                # Main metrics
+                col1, col2, col3 = st.columns(3)
+                
+                result_dict = result.to_dict()
+                
+                col1.metric(
+                    "Predicted Delay",
+                    f"{result_dict['predicted_delay']:.0f} min"
+                )
+                col2.metric(
+                    "Confidence Range",
+                    f"± {result_dict['confidence_mae']:.0f} min"
+                )
+                col3.metric(
+                    "Est. Range",
+                    f"{result_dict['lower_bound']:.0f}-{result_dict['upper_bound']:.0f} min"
+                )
+                
+                # Key factors
+                st.markdown("### 🔍 Key Factors")
+                
+                factors = {
+                    f"**{selected_airline_code} Performance**": f"{result_dict['carrier_avg_delay']:.1f} min avg",
+                    f"**{origin} Operations**": f"{result_dict['origin_delay_rate']:.1f}% delay rate",
+                    f"**{dest} Operations**": f"{result_dict['dest_delay_rate']:.1f}% delay rate",
+                }
+                
+                for factor, value in factors.items():
+                    st.write(f"{factor}: {value}")
+                
+                # Additional context
+                with st.expander("ℹ️ Understanding This Prediction"):
+                    st.markdown("""
+                    **How it works:**
+                    - Historical carrier performance
+                    - Airport operational efficiency
+                    - Time-of-day patterns
+                    - Day-of-week trends
+                    
+                    **Confidence band (±MAE)** represents the model's typical error range.
+                    """)
+                
+                # Save to search history
+                if "search_history" not in st.session_state:
+                    st.session_state.search_history = []
+                
+                # Create history entry
+                history_entry = {
+                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "flight_number": flight_input,
+                    "airline": selected_airline_name,
+                    "airline_code": selected_airline_code,
+                    "origin": origin,
+                    "destination": dest,
+                    "flight_date": flight_date.strftime("%Y-%m-%d"),
+                    "departure_hour": dep_hour,
+                    "predicted_delay": result_dict['predicted_delay'],
+                    "confidence_mae": result_dict['confidence_mae'],
+                    "lower_bound": result_dict['lower_bound'],
+                    "upper_bound": result_dict['upper_bound'],
+                    "carrier_avg_delay": result_dict['carrier_avg_delay'],
+                    "origin_delay_rate": result_dict['origin_delay_rate'],
+                    "dest_delay_rate": result_dict['dest_delay_rate']
+                }
+                
+                # Add to history (avoid duplicates)
+                history_key = f"{flight_input}_{origin}_{dest}_{flight_date}_{dep_hour}"
+                existing = [h for h in st.session_state.search_history 
+                           if h.get("history_key") == history_key]
+                
+                if not existing:
+                    history_entry["history_key"] = history_key
+                    st.session_state.search_history.append(history_entry)
+                    st.success("✅ Prediction saved to search history!")
+                
+            except Exception as e:
+                st.error(f"Prediction failed: {e}")
 
     with tab2:
-        st.subheader("Delay Analysis")
+        st.subheader("📊 Model Analytics")
         
-        if bts_airport is None or bts_carrier is None:
-            st.warning("BTS delay cause data not available. Please run the BTS data processing pipeline first.")
+        if predictor is None:
+            st.warning("Load model to see analytics")
         else:
-            display_delay_cause_insights(bts_airport, bts_carrier)
-            
-            # Interactive analysis
-            st.markdown("---")
-            st.subheader("🔍 Interactive Analysis")
-            
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**Airport Analysis**")
-                selected_airport = st.selectbox(
-                    "Select Airport",
-                    options=sorted(bts_airport['ORIGIN'].unique()),
-                    key="airport_selector"
-                )
-                
-                if selected_airport:
-                    airport_data = bts_airport[bts_airport['ORIGIN'] == selected_airport].iloc[0]
-                    st.metric("Total Delay Rate", f"{airport_data['total_delay_rate_origin']:.1%}")
-                    st.metric("Avg Delay Minutes", f"{airport_data['avg_delay_minutes_origin']:.1f} min")
-                    
-                    # Delay cause breakdown
-                    causes = {
-                        'Carrier Issues': airport_data['carrier_delay_rate_origin'],
-                        'Weather': airport_data['weather_delay_rate_origin'],
-                        'NAS (Air Traffic)': airport_data['nas_delay_rate_origin'],
-                        'Security': airport_data['security_delay_rate_origin'],
-                        'Late Aircraft': airport_data['late_aircraft_delay_rate_origin']
-                    }
-                    
-                    st.markdown("**Delay Causes:**")
-                    for cause, rate in causes.items():
-                        st.write(f"• {cause}: {rate:.1%}")
+                st.metric("Model Type", metadata.get('best_model', 'N/A'))
+                st.metric("Training Samples", f"{metadata.get('n_train', 0):,}")
             
             with col2:
-                st.markdown("**Carrier Analysis**")
-                selected_carrier = st.selectbox(
-                    "Select Carrier",
-                    options=sorted(bts_carrier['OP_CARRIER'].unique()),
-                    key="carrier_selector"
-                )
-                
-                if selected_carrier:
-                    carrier_data = bts_carrier[bts_carrier['OP_CARRIER'] == selected_carrier].iloc[0]
-                    st.metric("Total Delay Rate", f"{carrier_data['total_delay_rate_origin']:.1%}")
-                    st.metric("Avg Delay Minutes", f"{carrier_data['avg_delay_minutes_origin']:.1f} min")
-                    
-                    # Delay cause breakdown
-                    causes = {
-                        'Carrier Issues': carrier_data['carrier_delay_rate_origin'],
-                        'Weather': carrier_data['weather_delay_rate_origin'],
-                        'NAS (Air Traffic)': carrier_data['nas_delay_rate_origin'],
-                        'Security': carrier_data['security_delay_rate_origin'],
-                        'Late Aircraft': carrier_data['late_aircraft_delay_rate_origin']
-                    }
-                    
-                    st.markdown("**Delay Causes:**")
-                    for cause, rate in causes.items():
-                        st.write(f"• {cause}: {rate:.1%}")
+                st.metric("Test Samples", f"{metadata.get('n_test', 0):,}")
+                st.metric("MAE Performance", f"{metadata.get('selected_mae', 0):.2f} min")
+            
+            st.info("💡 Model trained on BTS historical delay patterns")
 
     with tab3:
-        st.subheader("Search History")
+        st.subheader("📋 Search History")
         
         if "search_history" not in st.session_state or not st.session_state.search_history:
-            st.info("No search history yet. Search for flight routes to see them here.")
+            st.info("No search history yet. Make some predictions to see them here!")
         else:
-            # Display search history
-            history_df = pd.DataFrame(st.session_state.search_history)
-            
-            # Show recent searches
-            st.dataframe(
-                history_df[["flight_number", "origin", "destination", "timestamp"]].sort_values("timestamp", ascending=False),
-                use_container_width=True
-            )
-            
-            # Download buttons
-            col1, col2 = st.columns(2)
+            # Filter and sort options
+            col1, col2, col3 = st.columns([2, 2, 1])
             
             with col1:
-                # CSV download
-                csv = history_df.to_csv(index=False)
-                st.download_button(
-                    label="Download as CSV",
-                    data=csv,
-                    file_name=f"flight_search_history_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
+                filter_option = st.selectbox(
+                    "Filter by",
+                    ["All", "Recent (Last 10)", "This Week", "High Delays (>20 min)", "Low Delays (<10 min)"],
+                    key="history_filter"
                 )
             
             with col2:
-                # JSON download using helper function
-                json_data = history_df.to_dict('records')
-                json_str, json_filename = json_to_csv_helper(json_data, "flight_search_history")
-                if json_str:
-                    st.download_button(
-                        label="Download as JSON",
-                        data=json_str,
-                        file_name=json_filename.replace('.csv', '.json'),
-                        mime="application/json"
-                    )
+                sort_option = st.selectbox(
+                    "Sort by",
+                    ["Most Recent", "Oldest First", "Flight Number", "Predicted Delay"],
+                    key="history_sort"
+                )
             
-            # Clear history button
-            if st.button("Clear History", type="secondary"):
-                st.session_state.search_history = []
-                st.rerun()
+            with col3:
+                if st.button("🗑️ Clear All", use_container_width=True):
+                    st.session_state.search_history = []
+                    st.rerun()
+            
+            # Apply filters
+            history = st.session_state.search_history.copy()
+            
+            if filter_option == "Recent (Last 10)":
+                history = history[-10:]
+            elif filter_option == "This Week":
+                week_ago = pd.Timestamp.now() - pd.Timedelta(days=7)
+                history = [h for h in history if pd.Timestamp(h["timestamp"]) >= week_ago]
+            elif filter_option == "High Delays (>20 min)":
+                history = [h for h in history if h["predicted_delay"] > 20]
+            elif filter_option == "Low Delays (<10 min)":
+                history = [h for h in history if h["predicted_delay"] < 10]
+            
+            # Apply sorting
+            if sort_option == "Most Recent":
+                history = sorted(history, key=lambda x: x["timestamp"], reverse=True)
+            elif sort_option == "Oldest First":
+                history = sorted(history, key=lambda x: x["timestamp"])
+            elif sort_option == "Flight Number":
+                history = sorted(history, key=lambda x: x["flight_number"])
+            elif sort_option == "Predicted Delay":
+                history = sorted(history, key=lambda x: x["predicted_delay"], reverse=True)
+            
+            # Display history as cards
+            st.write(f"**{len(history)} prediction(s) found**")
+            
+            for i, entry in enumerate(history):
+                with st.container():
+                    col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                    
+                    with col1:
+                        st.markdown(f"**✈️ {entry['flight_number']}** ({entry['airline']})")
+                        st.caption(f"{entry['origin']} → {entry['destination']}")
+                        st.caption(f"📅 {entry['flight_date']} at {entry['departure_hour']:02d}:00")
+                    
+                    with col2:
+                        delay_color = "🟢" if entry['predicted_delay'] < 10 else "🟡" if entry['predicted_delay'] < 20 else "🔴"
+                        st.markdown(f"{delay_color} **{entry['predicted_delay']:.0f} min**")
+                        st.caption(f"±{entry['confidence_mae']:.0f} min confidence")
+                    
+                    with col3:
+                        st.markdown(f"**Range:** {entry['lower_bound']:.0f}-{entry['upper_bound']:.0f} min")
+                        st.caption(f"Carrier avg: {entry['carrier_avg_delay']:.1f} min")
+                    
+                    with col4:
+                        if st.button("🔄", key=f"reload_{i}", help="Reload this prediction"):
+                            # Pre-fill the form with this entry's data
+                            st.session_state["reload_flight"] = entry
+                            st.rerun()
+                    
+                    st.markdown("---")
+            
+            # Export options
+            st.markdown("### 📥 Export History")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # CSV export
+                if history:
+                    df = pd.DataFrame(history)
+                csv = df.to_csv(index=False)
+                
+                st.download_button(
+                        label="📊 Download as CSV",
+                    data=csv,
+                        file_name=f"flight_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            
+            with col2:
+                # JSON export
+                if history:
+                    import json
+                json_str = json.dumps(history, indent=2)
+                
+                st.download_button(
+                        label="📄 Download as JSON",
+                    data=json_str,
+                        file_name=f"flight_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    use_container_width=True
+                )
+            
+            # Statistics
+            if history:
+                st.markdown("### 📈 History Statistics")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    avg_delay = sum(h["predicted_delay"] for h in history) / len(history)
+                    st.metric("Average Delay", f"{avg_delay:.1f} min")
+                
+                with col2:
+                    max_delay = max(h["predicted_delay"] for h in history)
+                    st.metric("Highest Delay", f"{max_delay:.0f} min")
+                
+                with col3:
+                    min_delay = min(h["predicted_delay"] for h in history)
+                    st.metric("Lowest Delay", f"{min_delay:.0f} min")
+                
+                with col4:
+                    total_predictions = len(history)
+                    st.metric("Total Predictions", f"{total_predictions}")
 
 
 if __name__ == "__main__":
     main()
-
