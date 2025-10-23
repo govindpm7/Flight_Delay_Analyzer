@@ -6,4 +6,6 @@ plotly==5.24.1
 python-dateutil==2.9.0.post0
 holidays==0.57
 google-search-results==2.4.2
+xgboost==2.0.3
+matplotlib==3.8.2
 

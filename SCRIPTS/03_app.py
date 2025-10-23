@@ -16,11 +16,11 @@ except Exception:
 
 from utils import parse_flight_number
 from modeling.model_loader import create_predictor
-from getSERP import search_flight_comprehensive
+from acquisition.getSERP import search_flight_comprehensive
 
 
 # Configuration
-ARTIFACT_DIR = "../OUTPUTS"  # Use relative path from SCRIPTS directory
+ARTIFACT_DIR = "../OUTPUTS/improved_model"  # Use improved model by default
 
 # Airline mappings for user-friendly display
 AIRLINE_MAPPINGS = {
