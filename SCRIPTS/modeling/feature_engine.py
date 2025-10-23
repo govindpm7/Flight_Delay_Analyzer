@@ -5,6 +5,11 @@ Handles all feature derivation from minimal inputs
 import pandas as pd
 from typing import Dict, Optional
 from datetime import date
+import os
+import sys
+
+# Add current directory to path for advanced feature imports
+sys.path.append(os.path.dirname(__file__))
 
 
 class FeatureEngine:
@@ -15,7 +20,8 @@ class FeatureEngine:
     
     def __init__(self, bts_airport_df: pd.DataFrame, 
                  bts_carrier_df: pd.DataFrame, 
-                 lookup_df: Optional[pd.DataFrame] = None):
+                 lookup_df: Optional[pd.DataFrame] = None,
+                 use_advanced_features: bool = True):
         """
         Initialize with pre-loaded lookup tables
         
@@ -23,6 +29,7 @@ class FeatureEngine:
             bts_airport_df: Airport statistics from BTS
             bts_carrier_df: Carrier statistics from BTS  
             lookup_df: Optional route/flight lookup data
+            use_advanced_features: Whether to apply PCA-derived features
         """
         # Store default values first
         self.default_airport_delay = bts_airport_df['avg_delay_minutes_origin'].mean()
@@ -33,6 +40,17 @@ class FeatureEngine:
         self.airport_cache = self._build_airport_cache(bts_airport_df)
         self.carrier_cache = self._build_carrier_cache(bts_carrier_df)
         self.route_cache = self._build_route_cache(lookup_df)
+        
+        # Initialize advanced feature engineer if enabled
+        self.use_advanced_features = use_advanced_features
+        if use_advanced_features:
+            try:
+                from feature_engineering_advanced import AdvancedFeatureEngineer
+                self.advanced_engineer = AdvancedFeatureEngineer()
+                print("Advanced features enabled")
+            except Exception as e:
+                print(f"Could not load advanced features: {e}")
+                self.use_advanced_features = False
     
     def _build_airport_cache(self, df: pd.DataFrame) -> Dict:
         """Build fast lookup dictionary for airport stats"""
@@ -85,6 +103,7 @@ class FeatureEngine:
                       flight_date: date, dep_hour: int) -> Dict:
         """
         Build complete feature vector from minimal inputs
+        Now includes PCA-derived advanced features if enabled
         
         Args:
             carrier: Airline code (e.g., "AA")
@@ -170,6 +189,23 @@ class FeatureEngine:
             'avg_security_delay_dest': float(dest_info.get('avg_security_delay', 0)),
             'avg_late_aircraft_delay_dest': float(dest_info.get('avg_late_aircraft_delay', 0)),
         }
+        
+        # Apply advanced features if enabled
+        if self.use_advanced_features and hasattr(self, 'advanced_engineer'):
+            try:
+                # Convert to DataFrame
+                df = pd.DataFrame([features])
+                
+                # Apply advanced engineering (only high priority features)
+                df_extended = self.advanced_engineer.engineer_all_features(
+                    df, 
+                    priority='high'
+                )
+                
+                # Convert back to dict
+                features = df_extended.iloc[0].to_dict()
+            except Exception as e:
+                print(f"Warning: Advanced feature engineering failed: {e}")
         
         return features
     

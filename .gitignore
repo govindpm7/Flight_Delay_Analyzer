@@ -76,3 +76,9 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Test files and utilities
+SCRIPTS/modeling/test_advanced_features.py
+SCRIPTS/modeling/test_app_integration.py
+SCRIPTS/utils.py
+SCRIPTS/04.5__utils.py
