@@ -46,10 +46,7 @@ venv.bak/
 # Streamlit
 .streamlit/
 
-# Model artifacts and outputs
 
-*.pkl
-*.joblib
 
 # Data files (keep structure but ignore large files)
 DATA/*.csv
