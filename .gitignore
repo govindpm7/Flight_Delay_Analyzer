@@ -79,3 +79,16 @@ SCRIPTS/modeling/test_advanced_features.py
 SCRIPTS/modeling/test_app_integration.py
 SCRIPTS/utils.py
 SCRIPTS/04.5__utils.py
+
+# Model artifacts and pickle files
+*.pkl
+*.joblib
+
+# PCA analysis images and plots
+OUTPUTS/pca_analysis/*.png
+OUTPUTS/pca_analysis/plots/
+OUTPUTS/pca_analysis/*.npy
+
+# Keep processed BTS data (explicitly allow)
+!OUTPUTS/processed_bts_data.csv
+!OUTPUTS/processing/processed_bts_data.csv

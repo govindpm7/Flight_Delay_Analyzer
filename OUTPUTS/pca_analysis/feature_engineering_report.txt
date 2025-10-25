@@ -1,0 +1,298 @@
+================================================================================
+PCA-DRIVEN FEATURE ENGINEERING RECOMMENDATIONS
+================================================================================
+
+SUMMARY:
+- Total feature suggestions: 33
+- Interaction features: 10
+- Polynomial features: 16
+- Aggregation features: 0
+- Domain-specific features: 2
+- PCA-derived features: 5
+
+
+INTERACTION FEATURES
+--------------------------------------------------------------------------------
+
+1. dow_X_is_weekend
+   Type: interaction
+   Operation: multiply
+   Input Features: dow, is_weekend
+   Rationale: Both load positively on PC1 (loadings: 0.619, 0.636)
+   Priority: high
+
+
+2. dow_X_airline_avg_delay
+   Type: interaction
+   Operation: multiply
+   Input Features: dow, airline_avg_delay
+   Rationale: Both load positively on PC1 (loadings: 0.619, 0.245)
+   Priority: high
+
+
+3. is_weekend_X_airline_avg_delay
+   Type: interaction
+   Operation: multiply
+   Input Features: is_weekend, airline_avg_delay
+   Rationale: Both load positively on PC1 (loadings: 0.636, 0.245)
+   Priority: high
+
+
+4. dow_DIV_dep_hour
+   Type: interaction
+   Operation: divide
+   Input Features: dow, dep_hour
+   Rationale: Opposite loadings on PC1 suggest ratio relationship
+   Priority: medium
+
+
+5. is_weekend_DIV_dep_hour
+   Type: interaction
+   Operation: divide
+   Input Features: is_weekend, dep_hour
+   Rationale: Opposite loadings on PC1 suggest ratio relationship
+   Priority: medium
+
+
+6. airline_avg_delay_DIV_dep_hour
+   Type: interaction
+   Operation: divide
+   Input Features: airline_avg_delay, dep_hour
+   Rationale: Opposite loadings on PC1 suggest ratio relationship
+   Priority: medium
+
+
+7. origin_avg_delay_X_airline_avg_delay
+   Type: interaction
+   Operation: multiply
+   Input Features: origin_avg_delay, airline_avg_delay
+   Rationale: Both load positively on PC2 (loadings: 0.747, 0.655)
+   Priority: medium
+
+
+8. dep_hour_X_dow
+   Type: interaction
+   Operation: multiply
+   Input Features: dep_hour, dow
+   Rationale: Both load positively on PC3 (loadings: 0.928, 0.238)
+   Priority: medium
+
+
+9. dep_hour_X_airline_avg_delay
+   Type: interaction
+   Operation: multiply
+   Input Features: dep_hour, airline_avg_delay
+   Rationale: Both load positively on PC3 (loadings: 0.928, 0.213)
+   Priority: medium
+
+
+10. dow_X_airline_avg_delay
+   Type: interaction
+   Operation: multiply
+   Input Features: dow, airline_avg_delay
+   Rationale: Both load positively on PC3 (loadings: 0.238, 0.213)
+   Priority: medium
+
+
+POLYNOMIAL FEATURES
+--------------------------------------------------------------------------------
+
+1. dow_squared
+   Type: polynomial
+   Operation: square
+   Input Features: dow
+   Rationale: High overall importance (1.909) suggests non-linear effects
+   Priority: high
+
+
+2. log_dow
+   Type: polynomial
+   Operation: log
+   Input Features: dow
+   Rationale: May have multiplicative effects (importance: 1.909)
+   Priority: medium
+
+
+3. airline_avg_delay_squared
+   Type: polynomial
+   Operation: square
+   Input Features: airline_avg_delay
+   Rationale: High overall importance (1.852) suggests non-linear effects
+   Priority: medium
+
+
+4. log_airline_avg_delay
+   Type: polynomial
+   Operation: log
+   Input Features: airline_avg_delay
+   Rationale: May have multiplicative effects (importance: 1.852)
+   Priority: medium
+
+
+5. is_weekend_squared
+   Type: polynomial
+   Operation: square
+   Input Features: is_weekend
+   Rationale: High overall importance (1.756) suggests non-linear effects
+   Priority: medium
+
+
+6. log_is_weekend
+   Type: polynomial
+   Operation: log
+   Input Features: is_weekend
+   Rationale: May have multiplicative effects (importance: 1.756)
+   Priority: medium
+
+
+7. origin_avg_delay_squared
+   Type: polynomial
+   Operation: square
+   Input Features: origin_avg_delay
+   Rationale: High overall importance (1.648) suggests non-linear effects
+   Priority: medium
+
+
+8. log_origin_avg_delay
+   Type: polynomial
+   Operation: log
+   Input Features: origin_avg_delay
+   Rationale: May have multiplicative effects (importance: 1.648)
+   Priority: medium
+
+
+9. dep_hour_squared
+   Type: polynomial
+   Operation: square
+   Input Features: dep_hour
+   Rationale: High overall importance (1.492) suggests non-linear effects
+   Priority: medium
+
+
+10. log_dep_hour
+   Type: polynomial
+   Operation: log
+   Input Features: dep_hour
+   Rationale: May have multiplicative effects (importance: 1.492)
+   Priority: medium
+
+
+11. month_squared
+   Type: polynomial
+   Operation: square
+   Input Features: month
+   Rationale: High overall importance (0.000) suggests non-linear effects
+   Priority: medium
+
+
+12. log_month
+   Type: polynomial
+   Operation: log
+   Input Features: month
+   Rationale: May have multiplicative effects (importance: 0.000)
+   Priority: medium
+
+
+13. route_avg_delay_squared
+   Type: polynomial
+   Operation: square
+   Input Features: route_avg_delay
+   Rationale: High overall importance (0.000) suggests non-linear effects
+   Priority: medium
+
+
+14. log_route_avg_delay
+   Type: polynomial
+   Operation: log
+   Input Features: route_avg_delay
+   Rationale: May have multiplicative effects (importance: 0.000)
+   Priority: medium
+
+
+15. DISTANCE_squared
+   Type: polynomial
+   Operation: square
+   Input Features: DISTANCE
+   Rationale: High overall importance (0.000) suggests non-linear effects
+   Priority: medium
+
+
+16. log_DISTANCE
+   Type: polynomial
+   Operation: log
+   Input Features: DISTANCE
+   Rationale: May have multiplicative effects (importance: 0.000)
+   Priority: medium
+
+
+AGGREGATION FEATURES
+--------------------------------------------------------------------------------
+
+DOMAIN SPECIFIC FEATURES
+--------------------------------------------------------------------------------
+
+1. composite_delay_risk_score
+   Type: domain_composite
+   Operation: weighted_average
+   Input Features: airline_avg_delay, origin_avg_delay, route_avg_delay
+   Rationale: Multiple delay features (3) are important - create weighted composite
+   Priority: high
+   Implementation: Weighted average of normalized delay features
+
+
+2. temporal_risk_category
+   Type: domain_composite
+   Operation: categorical_encoding
+   Input Features: dow, dep_hour, month
+   Rationale: Multiple temporal features (3) - bin into high/medium/low risk periods
+   Priority: high
+   Implementation: Create risk categories based on time patterns
+
+
+PCA DERIVED FEATURES
+--------------------------------------------------------------------------------
+
+1. principal_component_1
+   Type: pca_derived
+   Operation: principal_component
+   Input Features: PC1
+   Rationale: PC1 explains 42.8% of variance - captures key patterns
+   Priority: high
+   Implementation: Use PC1 scores directly as feature
+
+
+2. principal_component_2
+   Type: pca_derived
+   Operation: principal_component
+   Input Features: PC2
+   Rationale: PC2 explains 22.1% of variance - captures key patterns
+   Priority: high
+   Implementation: Use PC2 scores directly as feature
+
+
+3. principal_component_3
+   Type: pca_derived
+   Operation: principal_component
+   Input Features: PC3
+   Rationale: PC3 explains 16.8% of variance - captures key patterns
+   Priority: high
+   Implementation: Use PC3 scores directly as feature
+
+
+4. principal_component_4
+   Type: pca_derived
+   Operation: principal_component
+   Input Features: PC4
+   Rationale: PC4 explains 15.5% of variance - captures key patterns
+   Priority: high
+   Implementation: Use PC4 scores directly as feature
+
+
+5. principal_component_5
+   Type: pca_derived
+   Operation: principal_component
+   Input Features: PC5
+   Rationale: PC5 explains 2.8% of variance - captures key patterns
+   Priority: medium
+   Implementation: Use PC5 scores directly as feature
+

@@ -70,16 +70,11 @@ def create_training_dataset_from_bts():
         if carrier_stats.empty:
             continue
             
-        # Get route info
+        # Get route info - create route key and use defaults since flight_lookup doesn't have route info
         route_key = f"{airport}-{dest}"
-        route_info = flight_lookup[flight_lookup['route'] == route_key]
-        if route_info.empty:
-            # Use default distance
-            distance = 500.0
-            route_avg_delay = 10.0
-        else:
-            distance = route_info.iloc[0]['DISTANCE']
-            route_avg_delay = route_info.iloc[0]['avg_delay']
+        # Use default values since flight_lookup doesn't have distance or delay info
+        distance = 500.0
+        route_avg_delay = 10.0
         
         # Calculate temporal features
         dow = flight_date.weekday()

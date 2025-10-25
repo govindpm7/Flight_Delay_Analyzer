@@ -1,0 +1,37 @@
+{
+  "best_model": "random_forest",
+  "metrics": {
+    "random_forest": {
+      "mae": 7.3594789937682314,
+      "rmse": 9.409445622241375,
+      "r2": -0.004540788726240752,
+      "zero_predictions": 0,
+      "zero_pct": 0.0
+    },
+    "xgboost": {
+      "mae": 7.846494406789876,
+      "rmse": 9.923375996249632,
+      "r2": -0.11727066536640596,
+      "zero_predictions": 0,
+      "zero_pct": 0.0
+    }
+  },
+  "selected_mae": 7.3594789937682314,
+  "n_train": 12000,
+  "n_test": 3000,
+  "original_dataset_size": 75000,
+  "sampled_dataset_size": 15000,
+  "sample_size_used": 15000,
+  "major_hubs": [
+    "ATL",
+    "DEN",
+    "IAD",
+    "LAX"
+  ],
+  "delay_distribution": {
+    "mean": 6.69018713694224,
+    "std": 9.396187633489571,
+    "pct_delayed": 70.27333333333333,
+    "pct_highly_delayed": 17.146666666666665
+  }
+}
