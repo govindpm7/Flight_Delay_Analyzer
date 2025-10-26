@@ -786,27 +786,27 @@ def main():
                             # Explained variance
                             if os.path.exists(f"{pca_plots_dir}/explained_variance.png"):
                                 st.subheader("📊 Explained Variance")
-                                st.image(f"{pca_plots_dir}/explained_variance.png", use_column_width=True)
+                                st.image(f"{pca_plots_dir}/explained_variance.png", use_container_width=True)
                             
                             # Scree plot
                             if os.path.exists(f"{pca_data_dir}/scree_plot.png"):
                                 st.subheader("📈 Scree Plot")
-                                st.image(f"{pca_data_dir}/scree_plot.png", use_column_width=True)
+                                st.image(f"{pca_data_dir}/scree_plot.png", use_container_width=True)
                             
                             # Biplot
                             if os.path.exists(f"{pca_plots_dir}/biplot_pc1_pc2.png"):
                                 st.subheader("🎯 Principal Components Biplot")
-                                st.image(f"{pca_plots_dir}/biplot_pc1_pc2.png", use_column_width=True)
+                                st.image(f"{pca_plots_dir}/biplot_pc1_pc2.png", use_container_width=True)
                             
                             # Feature importance heatmap
                             if os.path.exists(f"{pca_plots_dir}/feature_importance_heatmap.png"):
                                 st.subheader("🔥 Feature Importance Heatmap")
-                                st.image(f"{pca_plots_dir}/feature_importance_heatmap.png", use_column_width=True)
+                                st.image(f"{pca_plots_dir}/feature_importance_heatmap.png", use_container_width=True)
                             
                             # Loadings heatmap
                             if os.path.exists(f"{pca_data_dir}/loadings_heatmap.png"):
                                 st.subheader("📋 Component Loadings Heatmap")
-                                st.image(f"{pca_data_dir}/loadings_heatmap.png", use_column_width=True)
+                                st.image(f"{pca_data_dir}/loadings_heatmap.png", use_container_width=True)
                             
                             # Component loadings table
                             if os.path.exists(f"{pca_data_dir}/component_loadings.csv"):
@@ -840,22 +840,22 @@ def main():
                             # Random Forest evaluation
                             if os.path.exists(f"{model_eval_dir}/random_forest_evaluation.png"):
                                 st.subheader("🌲 Random Forest Model Evaluation")
-                                st.image(f"{model_eval_dir}/random_forest_evaluation.png", use_column_width=True)
+                                st.image(f"{model_eval_dir}/random_forest_evaluation.png", use_container_width=True)
                             
                             # Random Forest feature importance
                             if os.path.exists(f"{model_eval_dir}/random_forest_feature_importance.png"):
                                 st.subheader("🌲 Random Forest Feature Importance")
-                                st.image(f"{model_eval_dir}/random_forest_feature_importance.png", use_column_width=True)
+                                st.image(f"{model_eval_dir}/random_forest_feature_importance.png", use_container_width=True)
                             
                             # XGBoost evaluation
                             if os.path.exists(f"{model_eval_dir}/xgboost_evaluation.png"):
                                 st.subheader("🚀 XGBoost Model Evaluation")
-                                st.image(f"{model_eval_dir}/xgboost_evaluation.png", use_column_width=True)
+                                st.image(f"{model_eval_dir}/xgboost_evaluation.png", use_container_width=True)
                             
                             # XGBoost feature importance
                             if os.path.exists(f"{model_eval_dir}/xgboost_feature_importance.png"):
                                 st.subheader("🚀 XGBoost Feature Importance")
-                                st.image(f"{model_eval_dir}/xgboost_feature_importance.png", use_column_width=True)
+                                st.image(f"{model_eval_dir}/xgboost_feature_importance.png", use_container_width=True)
                             
                             # Model comparison metrics
                             st.subheader("📊 Model Performance Comparison")
