@@ -3,103 +3,163 @@ Flight Delay Prediction Engine
 
 Overview
 --------
-This is a comprehensive flight delay prediction system that predicts US domestic flight departure delays using historical data. It provides a Streamlit frontend for entering a flight number and date, then returns a delay estimate with a confidence band and contributing factors.
+This is a comprehensive flight delay prediction system that predicts US domestic flight departure delays using historical BTS (Bureau of Transportation Statistics) data. It features a **dynamic prediction system** that only uses carriers and routes with available historical data, ensuring accurate predictions based on real performance metrics.
 
 Key Features
 ------------
-- **Advanced Machine Learning Models**: Random Forest, XGBoost, and Linear Regression with automatic model selection
-- **PCA Analysis & Feature Engineering**: Comprehensive Principal Component Analysis for feature discovery and advanced feature engineering based on PCA insights
-- **Route Search Integration**: SERP API integration for automatic flight route discovery with fallback to manual input
-- **Synthetic Data Training**: BTS-based synthetic data generation for model training when real data is limited
-- **BTS Data Integration**: Bureau of Transportation Statistics delay cause analysis and airport/carrier performance metrics
-- **Real-time Predictions**: Streamlit web interface with confidence intervals and contributing factor analysis
+- **Dynamic Prediction System**: Only predicts for carriers and routes with BTS historical data - no fallback predictions
+- **BTS Data Integration**: Uses actual Bureau of Transportation Statistics data for 20 carriers and 4 major hub airports
+- **SERP API Integration**: Real-time flight search with automatic filtering to match BTS data availability
+- **Advanced Machine Learning**: Random Forest, XGBoost, and Gradient Boosting models with automatic selection
+- **PCA Analysis & Feature Engineering**: Comprehensive Principal Component Analysis for feature discovery
+- **Transparent Predictions**: Shows exactly which data components (carrier, origin, destination) were available for the prediction
+- **Real-time Interface**: Streamlit web app with confidence intervals and data availability indicators
 
-Project structure
+Project Structure
 -----------------
-- `DATA/` — place raw CSV(s) here (BTS or Kaggle). The training script will read from this folder.
-- `OUTPUTS/` — trained model artifacts, PCA analysis results, BTS lookup tables, and synthetic data.
-- `SCRIPTS/` — comprehensive data processing, training, and analysis code:
-  - `modeling/` — advanced feature engineering, model training, and prediction modules
-  - `analysis/` — PCA analysis, feature relationship analysis, and visualization tools
-  - `acquisition/` — SERP API integration for route search and flight data acquisition
-  - `training/` — model retraining with PCA-derived features
-- `SCRIPTS/03_app.py` — Streamlit web interface with route search and prediction capabilities.
+- `DATA/` — Raw CSV files (BTS or Kaggle datasets)
+- `OUTPUTS/` — Model artifacts, PCA analysis, BTS lookup tables:
+  - `airport_model/` — Main model with BTS data integration
+  - `improved_model/` — Enhanced model with XGBoost and advanced features
+  - `pca_analysis/` — PCA analysis results and feature engineering reports
+  - `processing/` — Processed BTS data and lookup tables
+- `SCRIPTS/` — Core application code:
+  - `03_app.py` — Main Streamlit application with dynamic prediction system
+  - `airport_model_adapter.py` — Dynamic prediction adapter for BTS data filtering
+  - `train_bts_airport_model.py` — BTS-based model training
+  - `modeling/` — Feature engineering and prediction modules
+  - `analysis/` — PCA analysis and visualization tools
+  - `acquisition/` — SERP API integration for flight search
 
 Advanced Features
 ------------------
-- **PCA Analysis**: Comprehensive Principal Component Analysis with feature importance analysis, biplots, and variance explanation
-- **Feature Engineering**: Advanced feature creation based on PCA insights, including temporal patterns, route characteristics, and delay cause analysis
-- **Route Search**: SERP API integration for automatic flight route discovery with Google Search and Google Flights data
-- **Synthetic Data Generation**: BTS-based synthetic flight data generation for training when real data is limited
-- **Multiple Model Support**: Random Forest, XGBoost, and Linear Regression with automatic best model selection
-- **BTS Integration**: Bureau of Transportation Statistics delay cause analysis (carrier, weather, NAS, security, late aircraft delays)
+- **Dynamic Prediction System**: Only uses carriers and routes with BTS historical data
+- **BTS Data Filtering**: 20 carriers (AA, DL, UA, WN, etc.) and 4 hub airports (ATL, DEN, IAD, LAX)
+- **SERP API Integration**: Real-time flight search with automatic filtering to BTS carriers only
+- **Transparent Data Usage**: Shows which data components (carrier, origin, destination) were available
+- **PCA Analysis**: Comprehensive Principal Component Analysis with feature importance analysis
+- **Feature Engineering**: Advanced feature creation based on PCA insights and BTS delay causes
+- **Multiple Model Support**: Random Forest, XGBoost, and Gradient Boosting with automatic selection
+- **Confidence Intervals**: MAE-based confidence bands for prediction uncertainty
 
 Setup
 -----
-1) Create and activate a Python 3.10+ environment.
+1) **Create and activate a Python 3.10+ environment:**
+   ```bash
+   conda create -n flight_delay python=3.10
+   conda activate flight_delay
+   ```
 
-2) Install dependencies:
-   
+2) **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-3) Acquire data (historical, zero-cost):
-   - Download BTS On-Time Performance (recommended) or Kaggle “Flight Delays and Cancellations”.
-   - Ensure your CSV(s) include (or can be derived to) at least: `OP_CARRIER`, `FL_NUM`, `ORIGIN`, `DEST`, `CRS_DEP_TIME`, `DEP_DELAY`, `FL_DATE`, `DISTANCE`.
-   - Place the raw files inside `DATA/`.
-
-4) Optional quick clean/merge step:
-   
+3) **Quick Start (Recommended):**
    ```bash
-   python SCRIPTS/data_acquisition.py --input_dir DATA --output DATA/processed.csv
+   # Run the complete pipeline
+   .\run_pipeline.bat
+   
+   # Or use PowerShell
+   .\run_pipeline.ps1
    ```
 
-5) Train the model:
-   
+4) **Manual Setup (if needed):**
    ```bash
-   # Basic training
-   python SCRIPTS/02_train_model.py --input DATA/processed.csv --out_dir OUTPUTS
+   # Process BTS data
+   python SCRIPTS/01_data_acquisition.py --input_dir DATA --output DATA/processed.csv
    
-   # Advanced training with XGBoost and improved features
-   python SCRIPTS/02_train_model_improved.py --input DATA/processed.csv --out_dir OUTPUTS/improved_model
+   # Train the model
+   python SCRIPTS/train_bts_airport_model.py
    
-   # Run PCA analysis
-   python SCRIPTS/analysis/prepare_pca_data.py
+   # Run PCA analysis (optional)
    python SCRIPTS/analysis/run_pca_analysis.py
-   
-   # Generate synthetic data (optional)
-   python SCRIPTS/generate_synthetic_data.py
    ```
 
-6) Run the app:
-   
+5) **Launch the Application:**
    ```bash
-   streamlit run SCRIPTS/03_app.py
+   # Simple launcher
+   .\simple_start.bat
+   
+   # Or manually
+   cd SCRIPTS
+   python -m streamlit run 03_app.py --server.port 8501
    ```
 
-Usage notes
------------
-- Enter a flight number like `AA1234` and a date. The app will try to resolve route/time using SERP API search. If not found, manually enter the origin and destination airports.
-- Confidence interval uses validation MAE as ± bound for a simple, interpretable estimate.
-- The system uses BTS historical data for all predictions, ensuring consistent accuracy regardless of route discovery method.
+Usage
+-----
+### **How the Dynamic Prediction System Works:**
+
+1. **Route Selection**: Choose from 4 major hub airports (ATL, DEN, IAD, LAX)
+2. **Carrier Selection**: 
+   - **Primary**: "📊 Show Airlines with BTS Data" - Shows 20 carriers with historical data
+   - **Secondary**: "🔍 Search Additional Flight Info (SERP API)" - Searches real-time flights but filters to BTS carriers only
+3. **Prediction**: Only generates predictions for carriers/routes with BTS historical data
+4. **Transparency**: Shows exactly which data components were available (carrier ✓, origin ✓, destination ✓)
+
+### **Available Carriers (BTS Data):**
+- **Major Airlines**: AA (American), DL (Delta), UA (United), WN (Southwest)
+- **Regional Carriers**: 9E (Endeavor), AS (Alaska), B6 (JetBlue), F9 (Frontier), NK (Spirit)
+- **And 11 more carriers** with complete BTS historical data
+
+### **Prediction Features:**
+- **Dynamic Data Usage**: Only uses available BTS data components
+- **Confidence Intervals**: MAE-based uncertainty bounds
+- **Data Availability Display**: Shows which components contributed to the prediction
+- **No Fallback Predictions**: If no BTS data available, shows "Cannot generate prediction"
 
 System Capabilities
 -------------------
-- **Route Discovery**: Automatic flight route lookup via SERP API with manual fallback
-- **Delay Prediction**: Multi-model approach with Random Forest, XGBoost, and Linear Regression
-- **Feature Analysis**: PCA-driven feature engineering with comprehensive analysis reports
-- **Data Sources**: BTS On-Time Performance data with delay cause breakdown
-- **Synthetic Training**: BTS-based synthetic data generation for enhanced model training
-- **Real-time Interface**: Streamlit web app with confidence intervals and factor analysis
+- **Dynamic Prediction**: Only predicts for carriers/routes with BTS historical data
+- **BTS Data Integration**: 20 carriers × 4 hub airports with complete historical performance
+- **SERP API Integration**: Real-time flight search with automatic BTS carrier filtering
+- **Multi-Model Architecture**: Random Forest, XGBoost, and Gradient Boosting with automatic selection
+- **PCA Analysis**: Comprehensive feature engineering and analysis reports
+- **Transparent Predictions**: Shows data availability and contributing factors
+- **Real-time Interface**: Streamlit web app with confidence intervals and data indicators
 
 Deployment
 ----------
-- Local: `streamlit run SCRIPTS/03_app.py`
-- Streamlit Community Cloud: push this repo public to GitHub and configure the app to run `SCRIPTS/03_app.py`.
+### **Local Deployment:**
+```bash
+# Quick start
+.\simple_start.bat
+
+# Or manual
+cd SCRIPTS
+python -m streamlit run 03_app.py --server.port 8501
+```
+
+### **Cloud Deployment:**
+- **Streamlit Community Cloud**: Push to GitHub and configure to run `SCRIPTS/03_app.py`
+- **Docker**: Use the provided Dockerfile for containerized deployment
 
 Troubleshooting
 ---------------
-- If the app says model artifacts are missing, run the training step.
-- If columns don’t match, ensure the processed file contains required fields (see `SCRIPTS/data_acquisition.py`).
+### **Common Issues:**
+
+1. **"Model artifacts are missing"**
+   - **Solution**: Run `.\run_pipeline.bat` to train the model
+
+2. **"UnboundLocalError: available_airports"**
+   - **Solution**: This has been fixed in the latest version
+
+3. **"File does not exist: 03_app.py"**
+   - **Solution**: Make sure you're in the `SCRIPTS` directory or use `.\simple_start.bat`
+
+4. **"Python is not recognized"**
+   - **Solution**: Install Python 3.10+ and add to PATH, or use conda environment
+
+5. **"Streamlit is not installed"**
+   - **Solution**: Run `pip install streamlit`
+
+### **Launcher Scripts:**
+- `simple_start.bat` - Simple launcher with error checking
+- `run_pipeline.bat` - Complete pipeline (data processing + training + app)
+- `start_app_powershell.ps1` - PowerShell launcher with detailed error messages
+- `troubleshoot_start.bat` - Comprehensive troubleshooting launcher
+
+### **VS Code Integration:**
+- Use the "Flight Delay Analyzer - Streamlit App" debug configuration
+- Set Python interpreter to your conda environment
 
