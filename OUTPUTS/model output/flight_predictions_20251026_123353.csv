@@ -1,0 +1,2 @@
+timestamp,flight_number,airline,airline_code,origin,destination,flight_date,departure_hour,predicted_delay,confidence_mae,lower_bound,upper_bound,carrier_avg_delay,origin_delay_rate,dest_delay_rate,history_key
+2025-10-26 12:33:51,WN1234,Southwest Airlines,WN,DEN,ATL,2025-10-26,7,43.58380488740287,5.45624026913603,38.12756461826684,49.0400451565389,51.97947730394241,24.8462439867474,23.66888722606693,WN1234_DEN_ATL_2025-10-26_7

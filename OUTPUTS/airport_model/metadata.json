@@ -1,0 +1,54 @@
+{
+  "best_model": "gradient_boosting",
+  "training_date": "2025-10-25T18:48:25.508484",
+  "n_train": 446,
+  "n_test": 111,
+  "target_variable": "avg_delay_minutes",
+  "target_mean": 70.33690636603993,
+  "target_std": 30.099841868740093,
+  "airports": [
+    "ATL",
+    "DEN",
+    "IAD",
+    "LAX"
+  ],
+  "carriers": [
+    "9E",
+    "AA",
+    "AS",
+    "B6",
+    "C5",
+    "DL",
+    "F9",
+    "G4",
+    "G7",
+    "HA",
+    "MQ",
+    "NK",
+    "OH",
+    "OO",
+    "QX",
+    "UA",
+    "WN",
+    "YV",
+    "YX",
+    "ZW"
+  ],
+  "metrics": {
+    "random_forest": {
+      "mae": 5.700220246973844,
+      "rmse": 9.05366512198819,
+      "r2": 0.8479699493409543,
+      "cv_mae": 6.2225553791736505
+    },
+    "gradient_boosting": {
+      "mae": 5.45624026913603,
+      "rmse": 10.699469651694372,
+      "r2": 0.7876730656819746,
+      "cv_mae": 5.861259107839013
+    }
+  },
+  "selected_mae": 5.45624026913603,
+  "selected_rmse": 10.699469651694372,
+  "selected_r2": 0.7876730656819746
+}

@@ -1,3 +1,15 @@
 {
-    "python.pythonPath": "C:\\Users\\Govind Molakalapalli\\Documents\\GitHub\\.conda\\python.exe"
+    "python.defaultInterpreterPath": "python",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": false,
+    "python.linting.flake8Enabled": false,
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.extraPaths": [
+        "./SCRIPTS",
+        "./SCRIPTS/modeling",
+        "./SCRIPTS/acquisition"
+    ]
 }

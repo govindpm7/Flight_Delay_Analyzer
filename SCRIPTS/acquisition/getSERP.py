@@ -3,7 +3,7 @@ Optimized flight search module using SERP API and Google Flights API
 """
 import re
 from datetime import date, datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 import streamlit as st
 
 try:
@@ -11,10 +11,35 @@ try:
 except Exception:
     GoogleSearch = None
 
+# Global request log for tracking API usage
+_request_log = []
+
+def get_request_log():
+    """Get the current request log"""
+    return _request_log.copy()
+
+def clear_request_log():
+    """Clear the request log"""
+    global _request_log
+    _request_log = []
+
+def _log_request(url: str, params: Dict[str, Any], response_status: int = None):
+    """Log an API request"""
+    global _request_log
+    _request_log.append({
+        "timestamp": datetime.now().isoformat(),
+        "url": url,
+        "params": params,
+        "response_status": response_status
+    })
+
 
 # Compiled regex patterns for efficiency
 FLIGHT_NUMBER_PATTERN = re.compile(r'^\s*([A-Z]{2,3})\s*-?\s*(\d{1,4})\s*$')
-ROUTE_PATTERN = re.compile(r'\b([A-Z]{3})\s*(?:to|->|→|–|—)\s*([A-Z]{3})\b', re.IGNORECASE)
+# Improved route pattern - more flexible to catch various formats
+ROUTE_PATTERN = re.compile(r'\b([A-Z]{3})\s*(?:to|from|->|→|–|—|-)?\s*([A-Z]{3})\b', re.IGNORECASE)
+# Alternative pattern for space-separated codes (e.g., "LAX JFK")
+ROUTE_PATTERN_ALT = re.compile(r'\b([A-Z]{3})\s+([A-Z]{3})\b', re.IGNORECASE)
 IATA_CODE_PATTERN = re.compile(r'^[A-Z]{3}$')
 
 
@@ -59,6 +84,9 @@ def safe_serp_call(params: dict, error_context: str = "") -> Optional[dict]:
         search = GoogleSearch(params)
         results = search.get_dict()
         
+        # Log the request
+        _log_request("SERP API", params, 200 if "error" not in results else 400)
+        
         if "error" in results:
             st.error(f"SERP API error ({error_context}): {results['error']}")
             return None
@@ -66,6 +94,8 @@ def safe_serp_call(params: dict, error_context: str = "") -> Optional[dict]:
         return results
         
     except Exception as e:
+        # Log failed request
+        _log_request("SERP API", params, 500)
         st.error(f"SERP API call failed ({error_context}): {str(e)}")
         return None
 
@@ -99,7 +129,12 @@ def find_flight_route_from_search(flight_number: str, api_key: str) -> Optional[
     for result in results["organic_results"][:5]:
         text = f"{result.get('title', '')} {result.get('snippet', '')}".upper()
         
+        # Try primary route pattern first
         match = ROUTE_PATTERN.search(text)
+        if not match:
+            # Try alternative pattern for space-separated codes
+            match = ROUTE_PATTERN_ALT.search(text)
+        
         if match:
             origin, dest = match.group(1), match.group(2)
             if validate_airport_code(origin) and validate_airport_code(dest):
@@ -112,6 +147,83 @@ def find_flight_route_from_search(flight_number: str, api_key: str) -> Optional[
                 }
     
     return None
+
+
+def search_flights_between_airports(origin: str, dest: str, api_key: str) -> Optional[Dict]:
+    """
+    Search for flights between two specific airports using SERP API.
+    Returns multiple airlines found on the route.
+    
+    Args:
+        origin: Origin airport code (e.g., "ATL")
+        dest: Destination airport code (e.g., "LAX")
+        api_key: SERP API key
+        
+    Returns:
+        Dict with available airlines and flights or None
+    """
+    # Validate airport codes
+    if not validate_airport_code(origin) or not validate_airport_code(dest):
+        return None
+    
+    params = {
+        "engine": "google",
+        "q": f"flights from {origin} to {dest} today airlines",
+        "api_key": api_key,
+        "gl": "us",
+        "hl": "en",
+        "num": 15
+    }
+    
+    results = safe_serp_call(params, "airport-to-airport search")
+    if not results or "organic_results" not in results:
+        return None
+    
+    # Collect all airlines and flights found
+    airlines_found = set()
+    flights_found = []
+    
+    # Look for flight information in the results
+    for result in results["organic_results"][:10]:
+        text = f"{result.get('title', '')} {result.get('snippet', '')}".upper()
+        
+        # Look for flight numbers in the text
+        flight_matches = re.findall(r'\b([A-Z]{2,3})\s*(\d{1,4})\b', text)
+        for carrier, number in flight_matches:
+            if len(carrier) >= 2:  # Valid airline codes
+                airlines_found.add(carrier)
+                flights_found.append({
+                    "carrier": carrier,
+                    "number": number,
+                    "flight_number": f"{carrier}{number}",
+                    "title": result.get("title", ""),
+                    "link": result.get("link", "")
+                })
+    
+    # If we found airlines, return them
+    if airlines_found:
+        return {
+            "origin": origin.upper(),
+            "destination": dest.upper(),
+            "source": "airport_search",
+            "route_found": True,
+            "available_airlines": sorted(list(airlines_found)),
+            "flights_found": flights_found[:10],  # Limit to 10 flights
+            "airline_count": len(airlines_found)
+        }
+    
+    # If no specific flights found, return route info with common airlines
+    common_airlines = ["AA", "DL", "UA", "WN", "B6", "AS", "F9", "NK"]
+    return {
+        "origin": origin.upper(),
+        "destination": dest.upper(),
+        "source": "airport_search",
+        "route_found": True,
+        "available_airlines": common_airlines,
+        "flights_found": [],
+        "airline_count": len(common_airlines),
+        "message": f"Route {origin}-{dest} found, showing common airlines"
+    }
 
 
 def get_google_flights_data(origin: str, dest: str, flight_date: str, 
@@ -301,6 +413,7 @@ def search_flight_comprehensive(flight_number: str, flight_date: date,
     route_info = find_flight_route_from_search(flight_number, api_key)
     if route_info:
         result.update(route_info)
+        result["route_found"] = True
         
         # Step 2: Get Google Flights data for this route
         flights_data = get_google_flights_data(
@@ -315,7 +428,11 @@ def search_flight_comprehensive(flight_number: str, flight_date: date,
             result["google_flights_data"] = flights_data
     else:
         result["route_found"] = False
-        result["message"] = "Could not determine flight route"
+        result["message"] = "Could not determine flight route from search results"
+        result["debug_info"] = {
+            "search_query": f"{flight_number} flight route",
+            "suggestion": "Try providing origin and destination manually"
+        }
     
     # Step 3: Get real-time status
     if include_status:
