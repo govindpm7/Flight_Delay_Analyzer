@@ -17,7 +17,12 @@ except Exception:
 
 from utils import parse_flight_number
 from modeling.model_loader import create_predictor
-from acquisition.getSERP import search_flight_comprehensive, search_flights_between_airports
+try:
+    from acquisition.getSERP import search_flight_comprehensive, search_flights_between_airports
+except ImportError as e:
+    st.error(f"Import error: {e}")
+    search_flight_comprehensive = None
+    search_flights_between_airports = None
 from airport_model_adapter import create_airport_predictor
 
 
@@ -164,7 +169,11 @@ def main():
             st.info(f"🔄 Reloading: {reload_entry['flight_number']} ({reload_entry['origin']} → {reload_entry['destination']})")
             del st.session_state["reload_flight"]
         
-        # Airport Selection First
+        # Route-First Flight Search Workflow
+        st.subheader("Smart Flight Search")
+        st.caption("Select your route first, then find available flights with BTS data")
+        
+        # Airport Selection (Manual or Auto-filled)
         st.subheader("Route Selection")
         
         # Airport names mapping
@@ -183,14 +192,25 @@ def main():
             index=0,
             key="origin_airport_main"
         )
+        
+        # Filter destination options to exclude the selected origin
+        dest_options = [airport for airport in available_airports if airport != origin]
+        dest_default_index = 0 if origin != available_airports[1] else 0
+        
         dest = col2.selectbox(
             "Destination Airport",
-            options=available_airports,
+            options=dest_options,
             format_func=lambda x: airport_names[x],
-            index=1,
+            index=dest_default_index,
             key="dest_airport_main"
         )
         flight_date = col3.date_input("Date", value=date.today(), key="flight_date_main")
+        
+        # Validation: Ensure origin and destination are different
+        if origin == dest:
+            st.error("❌ **Invalid Route**: Origin and destination cannot be the same airport!")
+            st.warning("Please select different airports for origin and destination.")
+            st.stop()
         
         # Display selected route
         st.info(f"🛫 Route: **{origin} → {dest}** on {flight_date.strftime('%Y-%m-%d')}")
@@ -201,17 +221,146 @@ def main():
         if "selected_airline" not in st.session_state:
             st.session_state["selected_airline"] = None
         
-        # Airline Search Section
-        st.subheader("Airline Selection")
+        # Route-Based Flight Search Section
+        st.subheader("Find Flights for This Route")
         
-        # Always use BTS carriers for accurate predictions
-        if st.button("📊 Show Airlines with BTS Data", use_container_width=True, type="primary"):
-            # Filter carriers that have BTS data for this route
-            route_carriers = []
-            for carrier in available_carriers:
-                # For now, show all BTS carriers since we have data for all major routes
-                route_carriers.append(carrier)
-            
+        # Step 1: Search for flights on this route
+        if st.button("🔍 Find Available Flights", use_container_width=True, type="primary"):
+            if st.session_state.get("SERPAPI_API_KEY"):
+                if search_flights_between_airports is None:
+                    st.error("❌ SERP API functions not available. Check import errors.")
+                else:
+                    with st.spinner(f"Searching for flights from {origin} to {dest}..."):
+                        try:
+                            # Search for flights between the selected airports
+                            search_result = search_flights_between_airports(
+                                origin=origin,
+                                dest=dest, 
+                                api_key=st.session_state["SERPAPI_API_KEY"]
+                            )
+                        except Exception as e:
+                            st.error(f"Error searching for flights: {str(e)}")
+                            search_result = None
+                    
+                    if search_result and search_result.get("route_found"):
+                        # Filter to only show carriers with BTS data
+                        serp_airlines = search_result.get("available_airlines", [])
+                        bts_airlines = []
+                        flights_with_bts = []
+                        
+                        for airline in serp_airlines:
+                            if airline in available_carriers:
+                                bts_airlines.append(airline)
+                                # Find flights for this airline
+                                airline_flights = [f for f in search_result.get("flights_found", []) if f.get("carrier") == airline]
+                                flights_with_bts.extend(airline_flights)
+                        
+                        if bts_airlines:
+                            st.session_state["route_flights"] = {
+                                "available_airlines": bts_airlines,
+                                "flights_found": flights_with_bts,
+                                "origin": origin,
+                                "destination": dest,
+                                "bts_data_available": True,
+                                "total_flights": len(flights_with_bts)
+                            }
+                            st.success(f"✅ Found {len(flights_with_bts)} flights with BTS data from {len(bts_airlines)} airlines")
+                            
+                            # Show filtered out airlines
+                            filtered_out = [a for a in serp_airlines if a not in available_carriers]
+                            if filtered_out:
+                                st.info(f"ℹ️ Filtered out {len(filtered_out)} airlines without BTS data: {', '.join(filtered_out)}")
+                        else:
+                            st.warning(f"⚠️ No airlines from SERP API have BTS data for {origin} → {dest}")
+                            st.info("💡 Try using 'Show Airlines with BTS Data' button instead")
+                    else:
+                        st.warning(f"❌ No flights found for {origin} → {dest}")
+            else:
+                st.warning("⚠️ SERP API key required for flight search. Add it in the sidebar.")
+        
+        # Step 2: Show available flights if found
+        if "route_flights" in st.session_state:
+            route_data = st.session_state["route_flights"]
+            if route_data["origin"] == origin and route_data["destination"] == dest:
+                st.subheader("Available Flights")
+                
+                # Group flights by airline
+                flights_by_airline = {}
+                for flight in route_data["flights_found"]:
+                    carrier = flight.get("carrier")
+                    if carrier not in flights_by_airline:
+                        flights_by_airline[carrier] = []
+                    flights_by_airline[carrier].append(flight)
+                
+                # Display flights by airline
+                for carrier, flights in flights_by_airline.items():
+                    airline_name = carrier_names.get(carrier, carrier)
+                    with st.expander(f"✈️ {airline_name} ({carrier}) - {len(flights)} flights"):
+                        for i, flight in enumerate(flights):
+                            flight_num = flight.get("flight_number", f"{carrier}{i+1}")
+                            departure_time = flight.get("departure_time", "Time TBD")
+                            departure_hour = flight.get("departure_hour")
+                            
+                            # Create button text with departure time
+                            button_text = f"Select {flight_num}"
+                            if departure_time:
+                                button_text += f" ({departure_time})"
+                            
+                            if st.button(button_text, key=f"select_{flight_num}"):
+                                # Store selected flight info
+                                st.session_state["selected_flight"] = {
+                                    "flight_number": flight_num,
+                                    "carrier": carrier,
+                                    "origin": origin,
+                                    "destination": dest,
+                                    "title": flight.get("title", ""),
+                                    "link": flight.get("link", ""),
+                                    "departure_time": departure_time,
+                                    "departure_hour": departure_hour
+                                }
+                                st.session_state["selected_airline"] = carrier
+                                
+                                # Make additional SERP API call to get specific flight departure time
+                                if st.session_state.get("SERPAPI_API_KEY") and search_flight_comprehensive is not None:
+                                    with st.spinner(f"Getting departure time for {flight_num}..."):
+                                        try:
+                                            # Search for specific flight details
+                                            flight_details = search_flight_comprehensive(
+                                                flight_number=flight_num,
+                                                flight_date=flight_date,
+                                                api_key=st.session_state["SERPAPI_API_KEY"],
+                                                include_status=True
+                                            )
+                                            
+                                            # Extract departure time from Google Flights data
+                                            if flight_details.get("google_flights_data", {}).get("departure_time"):
+                                                gf_departure = flight_details["google_flights_data"]["departure_time"]
+                                                st.session_state["auto_fill_dep_hour"] = gf_departure
+                                                st.session_state["selected_flight"]["departure_time"] = gf_departure
+                                                st.session_state["selected_flight"]["departure_hour"] = gf_departure
+                                                st.success(f"✅ Selected: {flight_num} ({airline_name}) - Departure: {gf_departure}")
+                                            else:
+                                                # Fallback to original time if available
+                                                if departure_hour is not None:
+                                                    st.session_state["auto_fill_dep_hour"] = departure_hour
+                                                st.success(f"✅ Selected: {flight_num} ({airline_name}) - Departure: {departure_time or 'Time TBD'}")
+                                        except Exception as e:
+                                            st.warning(f"Could not get departure time for {flight_num}: {str(e)}")
+                                            # Fallback to original time if available
+                                            if departure_hour is not None:
+                                                st.session_state["auto_fill_dep_hour"] = departure_hour
+                                            st.success(f"✅ Selected: {flight_num} ({airline_name}) - Departure: {departure_time or 'Time TBD'}")
+                                else:
+                                    # Fallback to original time if available
+                                    if departure_hour is not None:
+                                        st.session_state["auto_fill_dep_hour"] = departure_hour
+                                    st.success(f"✅ Selected: {flight_num} ({airline_name}) - Departure: {departure_time or 'Time TBD'}")
+                                
+                                st.rerun()
+        
+        # Fallback: Show BTS carriers if no SERP search
+        if st.button("📊 Show Airlines with BTS Data", use_container_width=True):
+            route_carriers = [carrier for carrier in available_carriers]
             st.session_state["airline_search_results"] = {
                 "available_airlines": route_carriers,
                 "airline_count": len(route_carriers),
@@ -373,11 +522,48 @@ def main():
         st.markdown("---")
         st.subheader("Departure Time")
         
+        # Auto-fill departure hour if available from selected flight
+        default_dep_hour = 13
+        if "auto_fill_dep_hour" in st.session_state:
+            default_dep_hour = st.session_state["auto_fill_dep_hour"]
+        
+        if "selected_flight" in st.session_state:
+            selected_flight = st.session_state["selected_flight"]
+            departure_time = selected_flight.get("departure_time", "Time TBD")
+            st.info(f"✈️ **Selected Flight**: {selected_flight['flight_number']} ({carrier_names.get(selected_flight['carrier'], selected_flight['carrier'])}) - Departure: {departure_time}")
+            
+            # Manual refresh button for departure time
+            if st.session_state.get("SERPAPI_API_KEY") and search_flight_comprehensive is not None:
+                if st.button("🔄 Refresh Departure Time", help="Get updated departure time for selected flight"):
+                    with st.spinner(f"Getting departure time for {selected_flight['flight_number']}..."):
+                        try:
+                            flight_details = search_flight_comprehensive(
+                                flight_number=selected_flight['flight_number'],
+                                flight_date=flight_date,
+                                api_key=st.session_state["SERPAPI_API_KEY"],
+                                include_status=True
+                            )
+                            
+                            if flight_details.get("google_flights_data", {}).get("departure_time"):
+                                gf_departure = flight_details["google_flights_data"]["departure_time"]
+                                st.session_state["auto_fill_dep_hour"] = gf_departure
+                                st.session_state["selected_flight"]["departure_time"] = gf_departure
+                                st.session_state["selected_flight"]["departure_hour"] = gf_departure
+                                st.success(f"✅ Updated departure time: {gf_departure}")
+                                st.rerun()
+                            else:
+                                st.warning("❌ Could not find departure time for this flight")
+                        except Exception as e:
+                            st.error(f"Error getting departure time: {str(e)}")
+            
+            if "auto_fill_dep_hour" in st.session_state:
+                st.success(f"🕐 **Auto-filled**: Departure time from flight search")
+        
         dep_hour = st.number_input(
-            "Departure Hour", 
+            "Departure Hour (0-23)", 
             min_value=0, 
             max_value=23, 
-            value=13
+            value=default_dep_hour
         )
         
         # Predict button
@@ -388,6 +574,11 @@ def main():
 
             if not origin or not dest:
                 st.error("Please provide origin and destination airports")
+                return
+            
+            if origin == dest:
+                st.error("❌ **Invalid Route**: Origin and destination cannot be the same airport!")
+                st.warning("Please select different airports for origin and destination.")
                 return
             
             # Get selected airline from the new workflow
@@ -409,7 +600,7 @@ def main():
                 
                 # Display results
                 st.markdown("---")
-                st.subheader(f"✈️ {selected_airline_code} Flight: {origin} → {dest}")
+                st.subheader(f"{selected_airline_code} Flight: {origin} → {dest}")
                 
                 # Convert result to dict if needed
                 result_dict = result if isinstance(result, dict) else result.to_dict()
@@ -533,13 +724,13 @@ def main():
                 st.error(f"Prediction failed: {e}")
 
     with tab2:
-        st.subheader("📊 Model Analytics & EDA")
+        st.subheader("Model Analytics & EDA")
         
         if predictor is None:
             st.warning("Load model to see analytics")
         else:
             # Model Performance Overview
-            st.subheader("🎯 Model Performance")
+            st.subheader("Model Performance")
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
@@ -554,7 +745,7 @@ def main():
             st.info("Model trained on BTS historical delay patterns")
             
             # Summary statistics
-            st.subheader("📊 Dataset Summary")
+            st.subheader("Dataset Summary")
             try:
                 if os.path.exists("../OUTPUTS/processing/processed_bts_data.csv"):
                     bts_summary = pd.read_csv("../OUTPUTS/processing/processed_bts_data.csv")
@@ -657,7 +848,7 @@ def main():
                                 st.plotly_chart(fig_volume_trend, use_container_width=True)
                         
                         # Flight volume vs delays
-                        st.subheader("📊 Flight Volume vs Delays")
+                        st.subheader("Flight Volume vs Delays")
                         fig_volume = px.scatter(
                             bts_data, 
                             x='arr_flights', 
@@ -722,7 +913,7 @@ def main():
                             st.plotly_chart(fig_causes, use_container_width=True)
                     
                     with eda_tab3:
-                        st.subheader("✈️ Airport Performance Analysis")
+                        st.subheader("Airport Performance Analysis")
                         
                         if os.path.exists(airport_summary_path):
                             airport_data = pd.read_csv(airport_summary_path)
@@ -776,7 +967,7 @@ def main():
                             st.plotly_chart(fig_airport_causes, use_container_width=True)
                     
                     with eda_tab4:
-                        st.subheader("🔍 PCA Analysis Results")
+                        st.subheader("PCA Analysis Results")
                         
                         # Load PCA analysis data
                         pca_plots_dir = "../OUTPUTS/pca_analysis/plots"
@@ -785,7 +976,7 @@ def main():
                         if os.path.exists(pca_data_dir):
                             # Explained variance
                             if os.path.exists(f"{pca_plots_dir}/explained_variance.png"):
-                                st.subheader("📊 Explained Variance")
+                                st.subheader("Explained Variance")
                                 st.image(f"{pca_plots_dir}/explained_variance.png", use_container_width=True)
                             
                             # Scree plot
@@ -795,7 +986,7 @@ def main():
                             
                             # Biplot
                             if os.path.exists(f"{pca_plots_dir}/biplot_pc1_pc2.png"):
-                                st.subheader("🎯 Principal Components Biplot")
+                                st.subheader("Principal Components Biplot")
                                 st.image(f"{pca_plots_dir}/biplot_pc1_pc2.png", use_container_width=True)
                             
                             # Feature importance heatmap
@@ -805,12 +996,12 @@ def main():
                             
                             # Loadings heatmap
                             if os.path.exists(f"{pca_data_dir}/loadings_heatmap.png"):
-                                st.subheader("📋 Component Loadings Heatmap")
+                                st.subheader("Component Loadings Heatmap")
                                 st.image(f"{pca_data_dir}/loadings_heatmap.png", use_container_width=True)
                             
                             # Component loadings table
                             if os.path.exists(f"{pca_data_dir}/component_loadings.csv"):
-                                st.subheader("📊 Component Loadings")
+                                st.subheader("Component Loadings")
                                 loadings_df = pd.read_csv(f"{pca_data_dir}/component_loadings.csv", index_col=0)
                                 
                                 # Show top features for first few components
@@ -849,16 +1040,16 @@ def main():
                             
                             # XGBoost evaluation
                             if os.path.exists(f"{model_eval_dir}/xgboost_evaluation.png"):
-                                st.subheader("🚀 XGBoost Model Evaluation")
+                                st.subheader("XGBoost Model Evaluation")
                                 st.image(f"{model_eval_dir}/xgboost_evaluation.png", use_container_width=True)
                             
                             # XGBoost feature importance
                             if os.path.exists(f"{model_eval_dir}/xgboost_feature_importance.png"):
-                                st.subheader("🚀 XGBoost Feature Importance")
+                                st.subheader("XGBoost Feature Importance")
                                 st.image(f"{model_eval_dir}/xgboost_feature_importance.png", use_container_width=True)
                             
                             # Model comparison metrics
-                            st.subheader("📊 Model Performance Comparison")
+                            st.subheader("Model Performance Comparison")
                             
                             # Create a comparison table if metadata is available
                             if metadata:
@@ -1037,7 +1228,7 @@ def main():
                     st.metric("Total Predictions", f"{total_predictions}")
 
     with tab4:
-        st.subheader("🔍 SERP API Information")
+        st.subheader("SERP API Information")
         
         # API Key status
         if st.session_state.get("SERPAPI_API_KEY"):
@@ -1047,7 +1238,7 @@ def main():
         
         # Show last search result if available
         if "last_search_result" in st.session_state and st.session_state["last_search_result"]:
-            st.subheader("📊 Last Search Result")
+            st.subheader("Last Search Result")
             search_result = st.session_state["last_search_result"]
             
             # Summary metrics

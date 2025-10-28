@@ -192,12 +192,62 @@ def search_flights_between_airports(origin: str, dest: str, api_key: str) -> Opt
         for carrier, number in flight_matches:
             if len(carrier) >= 2:  # Valid airline codes
                 airlines_found.add(carrier)
+                
+                # Extract departure time from the text
+                departure_time = None
+                departure_hour = None
+                
+                # Look for time patterns (e.g., "8:30 AM", "14:45", "2:15 PM")
+                time_patterns = [
+                    r'(\d{1,2}):(\d{2})\s*(AM|PM)',  # 8:30 AM, 2:15 PM
+                    r'(\d{1,2}):(\d{2})',            # 14:45, 08:30
+                    r'(\d{1,2})\s*(AM|PM)',         # 8 AM, 2 PM
+                ]
+                
+                for pattern in time_patterns:
+                    time_match = re.search(pattern, text, re.IGNORECASE)
+                    if time_match:
+                        if ':' in time_match.group(0):
+                            # Format with colon
+                            hour_str, minute_str = time_match.groups()[:2]
+                            hour = int(hour_str)
+                            minute = int(minute_str)
+                            
+                            # Convert to 24-hour format if AM/PM specified
+                            if len(time_match.groups()) > 2 and time_match.group(3):
+                                am_pm = time_match.group(3).upper()
+                                if am_pm == 'PM' and hour != 12:
+                                    hour += 12
+                                elif am_pm == 'AM' and hour == 12:
+                                    hour = 0
+                            
+                            departure_time = f"{hour:02d}:{minute:02d}"
+                            departure_hour = hour
+                        else:
+                            # Format without colon
+                            hour_str = time_match.group(1)
+                            hour = int(hour_str)
+                            
+                            # Convert to 24-hour format if AM/PM specified
+                            if len(time_match.groups()) > 1 and time_match.group(2):
+                                am_pm = time_match.group(2).upper()
+                                if am_pm == 'PM' and hour != 12:
+                                    hour += 12
+                                elif am_pm == 'AM' and hour == 12:
+                                    hour = 0
+                            
+                            departure_time = f"{hour:02d}:00"
+                            departure_hour = hour
+                        break
+                
                 flights_found.append({
                     "carrier": carrier,
                     "number": number,
                     "flight_number": f"{carrier}{number}",
                     "title": result.get("title", ""),
-                    "link": result.get("link", "")
+                    "link": result.get("link", ""),
+                    "departure_time": departure_time,
+                    "departure_hour": departure_hour
                 })
     
     # If we found airlines, return them
