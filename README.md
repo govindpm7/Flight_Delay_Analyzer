@@ -7,9 +7,11 @@ This is a comprehensive flight delay prediction system that predicts US domestic
 
 Key Features
 ------------
+- **Enhanced Search Workflow**: Route-first approach with two-step SERP API integration
 - **Dynamic Prediction System**: Only predicts for carriers and routes with BTS historical data - no fallback predictions
 - **BTS Data Integration**: Uses actual Bureau of Transportation Statistics data for 20 carriers and 4 major hub airports
-- **SERP API Integration**: Real-time flight search with automatic filtering to match BTS data availability
+- **Real-Time Flight Discovery**: SERP API searches for current flight schedules and departure times
+- **Precise Departure Time Tracking**: Google Flights integration for exact departure times
 - **Advanced Machine Learning**: Random Forest, XGBoost, and Gradient Boosting models with automatic selection
 - **PCA Analysis & Feature Engineering**: Comprehensive Principal Component Analysis for feature discovery
 - **Transparent Predictions**: Shows exactly which data components (carrier, origin, destination) were available for the prediction
@@ -88,14 +90,29 @@ Setup
 
 Usage
 -----
-### **How the Dynamic Prediction System Works:**
+### **How the Enhanced Search Workflow Works:**
 
 1. **Route Selection**: Choose from 4 major hub airports (ATL, DEN, IAD, LAX)
-2. **Carrier Selection**: 
-   - **Primary**: "📊 Show Airlines with BTS Data" - Shows 20 carriers with historical data
-   - **Secondary**: "🔍 Search Additional Flight Info (SERP API)" - Searches real-time flights but filters to BTS carriers only
-3. **Prediction**: Only generates predictions for carriers/routes with BTS historical data
-4. **Transparency**: Shows exactly which data components were available (carrier ✓, origin ✓, destination ✓)
+2. **Flight Discovery**: 
+   - **Primary**: "Find Available Flights" - Searches SERP API for all flights on the route
+   - **Secondary**: "Show Airlines with BTS Data" - Shows 20 carriers with historical data
+3. **Specific Flight Selection**: Choose exact flight number from search results
+4. **Automatic Departure Time**: SERP API makes additional call to get precise departure time
+5. **Prediction**: Only generates predictions for carriers/routes with BTS historical data
+6. **Transparency**: Shows exactly which data components were available (carrier, origin, destination)
+
+### **Enhanced Two-Step SERP API Process:**
+
+#### **Step 1: Route-Based Flight Search**
+- **SERP API searches**: All flights for selected route (e.g., ATL → LAX)
+- **Filters results**: Only shows airlines with BTS historical data
+- **Displays flights**: Grouped by airline with departure times
+
+#### **Step 2: Specific Flight Lookup**
+- **When user selects**: Specific flight (e.g., AA5557)
+- **Additional SERP API call**: Gets precise departure time from Google Flights
+- **Auto-fills**: Departure hour field with exact time
+- **Manual refresh**: "Refresh Departure Time" button for updates
 
 ### **Available Carriers (BTS Data):**
 - **Major Airlines**: AA (American), DL (Delta), UA (United), WN (Southwest)
@@ -107,12 +124,40 @@ Usage
 - **Confidence Intervals**: MAE-based uncertainty bounds
 - **Data Availability Display**: Shows which components contributed to the prediction
 - **No Fallback Predictions**: If no BTS data available, shows "Cannot generate prediction"
+- **Real-Time Flight Data**: SERP API integration for current flight schedules
+- **Automatic Departure Time**: Precise time extraction from Google Flights data
+- **Route-First Approach**: Select route → Find flights → Pick specific flight → Predict delay
+
+### **Complete User Workflow:**
+
+1. **Select Route**: Choose origin and destination airports (ATL → LAX)
+2. **Find Flights**: Click "Find Available Flights" to search SERP API
+3. **View Results**: See flights grouped by airline with departure times
+4. **Select Flight**: Click specific flight (e.g., "Select AA5557 (15:30)")
+5. **Auto-Fill**: App automatically fills carrier and departure time
+6. **Predict Delay**: Click "Predict Delay" with all data ready
+
+### **Example Workflow:**
+```
+User selects: ATL → LAX
+SERP API finds: 10 airlines, filters to 2 with BTS data
+User sees:
+  American Airlines (AA) - 3 flights
+    • Select AA5557 (15:30)
+    • Select AA1234 (08:30)
+    • Select AA5678 (19:15)
+User clicks: "Select AA5557 (15:30)"
+App auto-fills: Carrier=AA, Departure Hour=15
+User clicks: "Predict Delay"
+```
 
 System Capabilities
 -------------------
+- **Enhanced Search Workflow**: Route-first approach with two-step SERP API integration
 - **Dynamic Prediction**: Only predicts for carriers/routes with BTS historical data
 - **BTS Data Integration**: 20 carriers × 4 hub airports with complete historical performance
-- **SERP API Integration**: Real-time flight search with automatic BTS carrier filtering
+- **Real-Time Flight Discovery**: SERP API searches for current flight schedules
+- **Precise Departure Times**: Google Flights integration for exact departure times
 - **Multi-Model Architecture**: Random Forest, XGBoost, and Gradient Boosting with automatic selection
 - **PCA Analysis**: Comprehensive feature engineering and analysis reports
 - **Transparent Predictions**: Shows data availability and contributing factors
